@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="ZSReaScripts" commit="d79b559904ecc48d5623359629ac4d2c8f6088b3">
+  <category name="Audio Effects/ReaPyTapeSim3">
+    <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Analog Tape Simulator\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A highly realistic, procedural analog tape degradation simulator bridging Python DSP with ReaImGui.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b IMPORTANT:} After installing via ReaPack, you must have Python and FFmpeg installed on your system. Navigate to the script's folder and run {\f1 pip install -r requirements.txt} to install the DSP dependencies. See the included README.md for full instructions.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.2" author="ZS &amp; Assistant" time="2026-02-24T11:14:25Z">
+        <source main="main">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/tape_sim3_UI.lua</source>
+        <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
+        <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
+        <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/README.md</source>
+      </version>
+    </reapack>
+  </category>
+</index>
