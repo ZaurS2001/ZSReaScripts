@@ -18,7 +18,7 @@ Some scripts may require additional dependencies, such as Python, FFmpeg, or spe
 
 The following scripts are currently available in this ReaPack repository:
 
-### [ReaPyTapeSim3](./Audio%20Effects/Tape%20Simulator/README.md)
+### [ReaPyTapeSim3](./Audio%20Effects/ReaPyTapeSim3/README.md)
 
 A highly realistic, procedural analog tape degradation simulator that bridges a custom Python DSP engine with a seamless REAPER Lua interface. This script requires Python, FFmpeg, and the `numpy`, `scipy`, and `soundfile` Python packages. Please refer to its dedicated `README.md` file for detailed installation and usage instructions.
 
