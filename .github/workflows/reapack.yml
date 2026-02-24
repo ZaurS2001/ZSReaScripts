@@ -4,7 +4,6 @@ on:
   push:
     branches: [ master, main ]
 
-# Required to allow GitHub Actions to commit the file back to your repo
 permissions:
   contents: write 
 
@@ -15,6 +14,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install system dependencies (Pandoc)
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -24,9 +26,10 @@ jobs:
         run: gem install reapack-index
 
       - name: Run reapack-index
-        run: reapack-index --name "ZSReaScripts"
+        run: reapack-index --name "ZSReaScripts" --no-commit --no-warnings
 
-      - name: Commit index.xml
+      # 3. Automatically push the generated index.xml to your repo
+      - name: Push generated index
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Auto-generate ReaPack index.xml"
