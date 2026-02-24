@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="d79b559904ecc48d5623359629ac4d2c8f6088b3">
+<index version="1" name="ZSReaScripts" commit="d4b9f83a5607aaf476e8ba1fe0a888e5897fad45">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -9,7 +9,6 @@
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Analog Tape Simulator\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A highly realistic, procedural analog tape degradation simulator bridging Python DSP with ReaImGui.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 {\b IMPORTANT:} After installing via ReaPack, you must have Python and FFmpeg installed on your system. Navigate to the script's folder and run {\f1 pip install -r requirements.txt} to install the DSP dependencies. See the included README.md for full instructions.\par}
 }
 ]]></description>
       </metadata>
@@ -18,6 +17,12 @@
         <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
         <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
         <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/d79b559904ecc48d5623359629ac4d2c8f6088b3/Audio%20Effects/ReaPyTapeSim3/README.md</source>
+      </version>
+      <version name="1.3" author="ZS" time="2026-02-24T13:37:13Z">
+        <source main="main">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/tape_sim3_UI.lua</source>
+        <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
+        <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
+        <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/README.md</source>
       </version>
     </reapack>
   </category>
