@@ -77,7 +77,7 @@ def process_tape_sim(input_file, output_file, age_pct, tape_type, out_format, sa
     print(f"Applying Analog Saturation and Base EQ (Age: {age_pct}%) ...")
     drive = 1.0 + A * 3.0
     audio = np.tanh(audio * drive) 
-    audio = np.clip(audio, -1.0, drive/1.5)
+    audio = np.clip(audio, -1.0, 1.0)
     cutoff_lp = max(16000 - A * 10000, 1000)
     cutoff_hp = 30 + A * 40
     audio = apply_lowpass(audio, cutoff_lp, sr, order=2)
