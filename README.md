@@ -39,7 +39,7 @@ Contributions to this script collection are welcome! If you have a REAPER script
 ## ⚠️ Important Notes
 
 *   This repository is automatically indexed by ReaPack. Any changes to the script files will be reflected in the ReaPack repository after a short delay (usually within a few minutes).
-*   Please report any issues or suggestions in the [Issues](https://github.com/YourUsername/ZSReaScripts/issues) section of this repository.
+*   Please report any issues or suggestions in the [Issues](https://github.com/ZaurS2001/ZSReaScripts/issues) section of this repository.
 *   All scripts are provided as-is, without any warranty. Use them at your own risk.
 
 ---
