@@ -5,7 +5,7 @@ A collection of custom REAPER scripts to enhance your audio production workflow.
 ## 📦 Installation (Via ReaPack)
 
 1.  In REAPER, go to **Extensions > ReaPack > Import repositories...**
-2.  Paste the raw URL of the `[index.xml](https://raw.githubusercontent.com/ZaurS2001/ZSReaScripts/refs/heads/main/index.xml)` file, located in the root of this GitHub repository.
+2.  Paste the raw URL of the [index.xml](https://raw.githubusercontent.com/ZaurS2001/ZSReaScripts/refs/heads/main/index.xml) file, located in the root of this GitHub repository.
 3.  Go to **Extensions > ReaPack > Browse packages**, search for the desired script, right-click and choose **Install**, then click **Apply** in the bottom right.
 
 ### Individual Script Dependencies:
