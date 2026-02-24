@@ -1,6 +1,6 @@
 # Analog Tape Simulator (REAPER Offline Processor)
 
-A highly realistic, procedural analog tape degradation simulator. This tool bridges a custom Python DSP engine with a seamless, native-feeling REAPER Lua interface using ReaImGui. 
+A highly realistic, procedural analog tape degradation simulator, making your audio sound like it was put through some really bad tape recorder. This tool bridges a custom Python DSP engine with a seamless, native-feeling REAPER Lua interface using ReaImGui. 
 
 It allows you to drag and drop audio files (or grab items directly from your REAPER timeline), process them offline with true-to-life tape wow, flutter, chewing, hiss, and dropouts, and automatically place the newly rendered audio right back into your REAPER session.
 
