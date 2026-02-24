@@ -29,7 +29,7 @@ To run this script, your system needs a few standard tools installed:
 4. **⚠️ CRUCIAL FINAL STEP (Installing DSP Dependencies):**
    * ReaPack has downloaded the scripts, but you must install the Python audio libraries.
    * Open REAPER's **Action List** (`?`).
-   * Search for `Tape Simulator`.
+   * Search for `ReaPyTapeSim3`.
    * Right-click the Lua script in the list and select **"Show in Explorer/Finder"**.
    * Open your Command Prompt (Windows) or Terminal (Mac), navigate to that exact folder, and run:
      ```bash
