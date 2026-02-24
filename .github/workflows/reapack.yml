@@ -4,18 +4,29 @@ on:
   push:
     branches: [ master, main ]
 
+# Required to allow GitHub Actions to commit the file back to your repo
+permissions:
+  contents: write 
+
 jobs:
   reapack-index:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Install reapack-index
+        run: gem install reapack-index
+
       - name: Run reapack-index
-        uses: cfillion/reapack-index@v1.2.4
-        with:
-          name: "ZSReascripts" # Name of your repository in ReaPack
-          
+        run: reapack-index --name "ZSReaScripts"
+
       - name: Commit index.xml
-        uses: stefanzweifel/git-auto-commit-action@v4
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "Auto-generated ReaPack index.xml"
+          commit_message: "Auto-generate ReaPack index.xml"
