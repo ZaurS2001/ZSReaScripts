@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout@v3
       
       - name: Run reapack-index
-        uses: cfillion/reapack-index@master
+        uses: cfillion/reapack-index@v1.2.4
         with:
           name: "ZSReascripts" # Name of your repository in ReaPack
           
