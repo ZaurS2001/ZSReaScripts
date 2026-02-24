@@ -1,0 +1,21 @@
+name: ReaPack Indexer
+
+on:
+  push:
+    branches: [ master, main ]
+
+jobs:
+  reapack-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run reapack-index
+        uses: cfillion/reapack-index@v1
+        with:
+          name: "ZSReascripts" # Name of your repository in ReaPack
+          
+      - name: Commit index.xml
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Auto-generated ReaPack index.xml"
