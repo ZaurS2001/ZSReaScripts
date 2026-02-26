@@ -2,7 +2,7 @@
 -- @author ZS
 -- @version 1.4
 -- @provides
---   presets/default.ini
+--   presets/Default.ini
 --   tape_sim3.py
 --   requirements.txt
 --   README.md
