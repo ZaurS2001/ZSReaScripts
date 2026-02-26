@@ -1,6 +1,6 @@
 -- @description ReaPyTapeSim3 UI
 -- @author ZS
--- @version 1.4
+-- @version 1.4.1
 -- @provides
 --   presets/Default.ini
 --   tape_sim3.py
