@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="d4b9f83a5607aaf476e8ba1fe0a888e5897fad45">
+<index version="1" name="ZSReaScripts" commit="402196b590654a2393eda394bc4d4d01bbb280c9">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -23,6 +23,13 @@
         <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
         <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
         <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/d4b9f83a5607aaf476e8ba1fe0a888e5897fad45/Audio%20Effects/ReaPyTapeSim3/README.md</source>
+      </version>
+      <version name="1.4" author="ZS" time="2026-02-26T16:50:21Z">
+        <source main="main">https://github.com/ZaurS2001/ZSReaScripts/raw/402196b590654a2393eda394bc4d4d01bbb280c9/Audio%20Effects/ReaPyTapeSim3/tape_sim3_UI.lua</source>
+        <source file="presets/Default.ini">https://github.com/ZaurS2001/ZSReaScripts/raw/402196b590654a2393eda394bc4d4d01bbb280c9/Audio%20Effects/ReaPyTapeSim3/presets/Default.ini</source>
+        <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/402196b590654a2393eda394bc4d4d01bbb280c9/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
+        <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/402196b590654a2393eda394bc4d4d01bbb280c9/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
+        <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/402196b590654a2393eda394bc4d4d01bbb280c9/Audio%20Effects/ReaPyTapeSim3/README.md</source>
       </version>
     </reapack>
   </category>
