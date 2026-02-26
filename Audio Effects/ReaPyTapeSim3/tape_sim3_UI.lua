@@ -340,209 +340,215 @@ function DrawUI()
     local slider_w = 200
     local rv
 
-    -- ================= LEFT COLUMN (System) =================
-    reaper.ImGui_BeginGroup(ctx)
-    
-    reaper.ImGui_Text(ctx, "INPUT AUDIO")
-    reaper.ImGui_Separator(ctx)
-    
-    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x333333FF)
-    local btn_text = input_file == "" and "Click to Browse File\n\n(or Drag & Drop File Here)" or "File Loaded:\n" .. input_file:match("([^\\/]+)$")
-    if reaper.ImGui_Button(ctx, btn_text, col1_w, 70) then
-        local retval, filename = reaper.GetUserFileNameForRead("", "Select Audio File", "")
-        if retval then
-            input_file = filename
-            target_item = nil 
-        end
-    end
-    reaper.ImGui_PopStyleColor(ctx)
+    -- USING TABLES: This strictly confines Separators to their own specific column!
+    if reaper.ImGui_BeginTable(ctx, 'main_layout', 3, reaper.ImGui_TableFlags_None()) then
+        -- Setup exactly 3 columns: Left block, an empty 15px margin, and the Right block
+        reaper.ImGui_TableSetupColumn(ctx, 'LeftCol', reaper.ImGui_TableColumnFlags_WidthFixed(), col1_w)
+        reaper.ImGui_TableSetupColumn(ctx, 'Margin', reaper.ImGui_TableColumnFlags_WidthFixed(), 15)
+        reaper.ImGui_TableSetupColumn(ctx, 'RightCol', reaper.ImGui_TableColumnFlags_WidthFixed(), slider_w + 180)
+        reaper.ImGui_TableNextRow(ctx)
 
-    if reaper.ImGui_BeginDragDropTarget(ctx) then
-        local rv_d, count = reaper.ImGui_AcceptDragDropPayloadFiles(ctx)
-        if rv_d and count > 0 then
-            local ok, filename = reaper.ImGui_GetDragDropPayloadFile(ctx, 0)
-            if ok and filename ~= "" then
+        -- ================= LEFT COLUMN (System) =================
+        reaper.ImGui_TableSetColumnIndex(ctx, 0)
+        
+        reaper.ImGui_Text(ctx, "INPUT AUDIO")
+        reaper.ImGui_Separator(ctx) -- Now correctly stops at the edge of col1_w!
+        
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x333333FF)
+        local btn_text = input_file == "" and "Click to Browse File\n\n(or Drag & Drop File Here)" or "File Loaded:\n" .. input_file:match("([^\\/]+)$")
+        if reaper.ImGui_Button(ctx, btn_text, col1_w, 70) then
+            local retval, filename = reaper.GetUserFileNameForRead("", "Select Audio File", "")
+            if retval then
                 input_file = filename
-                target_item = nil
+                target_item = nil 
             end
         end
-        reaper.ImGui_EndDragDropTarget(ctx)
-    end
-    
-    if reaper.ImGui_Button(ctx, "Grab Selected Item from REAPER Timeline", col1_w, 25) then
-        local item = reaper.GetSelectedMediaItem(0, 0)
-        if item then
-            local take = reaper.GetActiveTake(item)
-            if take then
-                local src = reaper.GetMediaItemTake_Source(take)
-                local path = reaper.GetMediaSourceFileName(src, "")
-                if path ~= "" then
-                    input_file = path
-                    target_item = item
+        reaper.ImGui_PopStyleColor(ctx)
+
+        if reaper.ImGui_BeginDragDropTarget(ctx) then
+            local rv_d, count = reaper.ImGui_AcceptDragDropPayloadFiles(ctx)
+            if rv_d and count > 0 then
+                local ok, filename = reaper.ImGui_GetDragDropPayloadFile(ctx, 0)
+                if ok and filename ~= "" then
+                    input_file = filename
+                    target_item = nil
+                end
+            end
+            reaper.ImGui_EndDragDropTarget(ctx)
+        end
+        
+        if reaper.ImGui_Button(ctx, "Grab Selected Item from REAPER Timeline", col1_w, 25) then
+            local item = reaper.GetSelectedMediaItem(0, 0)
+            if item then
+                local take = reaper.GetActiveTake(item)
+                if take then
+                    local src = reaper.GetMediaItemTake_Source(take)
+                    local path = reaper.GetMediaSourceFileName(src, "")
+                    if path ~= "" then
+                        input_file = path
+                        target_item = item
+                    end
                 end
             end
         end
-    end
-    
-    reaper.ImGui_Dummy(ctx, 0, 10)
-    
-    reaper.ImGui_Text(ctx, "PRESETS")
-    reaper.ImGui_Separator(ctx)
-    
-    reaper.ImGui_PushItemWidth(ctx, 205)
-    if reaper.ImGui_BeginCombo(ctx, "##presets", selected_preset_name) then
-        for i, p in ipairs(presets_list) do
-            if reaper.ImGui_Selectable(ctx, p.name, selected_preset_idx == i) then
-                selected_preset_idx = i
-                LoadPreset(p.filename, p.name)
-            end
-        end
-        reaper.ImGui_EndCombo(ctx)
-    end
-    reaper.ImGui_PopItemWidth(ctx)
-    
-    reaper.ImGui_SameLine(ctx)
-    if reaper.ImGui_Button(ctx, "Save") then
-        reaper.ImGui_OpenPopup(ctx, "Save Preset Popup")
-    end
-    reaper.ImGui_SameLine(ctx)
-    if reaper.ImGui_Button(ctx, "Rescan") then
-        ScanPresets()
-    end
-
-    reaper.ImGui_Dummy(ctx, 0, 10)
-    
-    reaper.ImGui_Text(ctx, "OUTPUT FORMAT")
-    reaper.ImGui_Separator(ctx)
-
-    reaper.ImGui_PushItemWidth(ctx, col1_w - 90) -- Leaves space so Labels fit naturally
-    if reaper.ImGui_BeginCombo(ctx, "File Format", format_list[format_idx]) then
-        for i, v in ipairs(format_list) do
-            if reaper.ImGui_Selectable(ctx, v, format_idx == i) then format_idx = i end
-        end
-        reaper.ImGui_EndCombo(ctx)
-    end
-
-    if reaper.ImGui_BeginCombo(ctx, "Sample Rate", sr_list[sr_idx]) then
-        for i, v in ipairs(sr_list) do
-            if reaper.ImGui_Selectable(ctx, v, sr_idx == i) then sr_idx = i end
-        end
-        reaper.ImGui_EndCombo(ctx)
-    end
-    
-    if format_idx == 1 then
-        local current_label = bd_list[bd_idx] == "32" and "32-bit float" or (bd_list[bd_idx] .. "-bit")
-        if reaper.ImGui_BeginCombo(ctx, "Bit Depth", current_label) then
-            for i, v in ipairs(bd_list) do
-                local label = v == "32" and "32-bit float" or (v .. "-bit")
-                if reaper.ImGui_Selectable(ctx, label, bd_idx == i) then bd_idx = i end
-            end
-            reaper.ImGui_EndCombo(ctx)
-        end
-    else
-        if reaper.ImGui_BeginCombo(ctx, "Bitrate", br_list[br_idx]) then
-            for i, v in ipairs(br_list) do
-                if reaper.ImGui_Selectable(ctx, v, br_idx == i) then br_idx = i end
-            end
-            reaper.ImGui_EndCombo(ctx)
-        end
-    end
-    reaper.ImGui_PopItemWidth(ctx)
-
-    reaper.ImGui_Dummy(ctx, 0, 15)
-    
-    -- Processing Buttons dynamically adjust their look to fit column cleanly
-    if processing then
-        reaper.ImGui_BeginDisabled(ctx)
-        reaper.ImGui_Button(ctx, "Processing... REAPER may freeze briefly.", col1_w, 45)
-        reaper.ImGui_EndDisabled(ctx)
         
-        processing_frames = processing_frames + 1
-        if processing_frames > 2 then
-            ExecuteProcessing()
-            processing = false
-            process_triggered = false
-        end
-    else
-        if input_file ~= "" then
-            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x228B22FF)
-            if reaper.ImGui_Button(ctx, "PROCESS OFFLINE", col1_w, 45) then
-                process_triggered = true
-                processing_frames = 0
+        reaper.ImGui_Dummy(ctx, 0, 10)
+        
+        reaper.ImGui_Text(ctx, "PRESETS")
+        reaper.ImGui_Separator(ctx)
+        
+        reaper.ImGui_PushItemWidth(ctx, 205)
+        if reaper.ImGui_BeginCombo(ctx, "##presets", selected_preset_name) then
+            for i, p in ipairs(presets_list) do
+                if reaper.ImGui_Selectable(ctx, p.name, selected_preset_idx == i) then
+                    selected_preset_idx = i
+                    LoadPreset(p.filename, p.name)
+                end
             end
-            reaper.ImGui_PopStyleColor(ctx)
+            reaper.ImGui_EndCombo(ctx)
+        end
+        reaper.ImGui_PopItemWidth(ctx)
+        
+        reaper.ImGui_SameLine(ctx)
+        if reaper.ImGui_Button(ctx, "Save") then
+            reaper.ImGui_OpenPopup(ctx, "Save Preset Popup")
+        end
+        reaper.ImGui_SameLine(ctx)
+        if reaper.ImGui_Button(ctx, "Rescan") then
+            ScanPresets()
+        end
+
+        reaper.ImGui_Dummy(ctx, 0, 10)
+        
+        reaper.ImGui_Text(ctx, "OUTPUT FORMAT")
+        reaper.ImGui_Separator(ctx)
+
+        reaper.ImGui_PushItemWidth(ctx, col1_w - 90)
+        if reaper.ImGui_BeginCombo(ctx, "File Format", format_list[format_idx]) then
+            for i, v in ipairs(format_list) do
+                if reaper.ImGui_Selectable(ctx, v, format_idx == i) then format_idx = i end
+            end
+            reaper.ImGui_EndCombo(ctx)
+        end
+
+        if reaper.ImGui_BeginCombo(ctx, "Sample Rate", sr_list[sr_idx]) then
+            for i, v in ipairs(sr_list) do
+                if reaper.ImGui_Selectable(ctx, v, sr_idx == i) then sr_idx = i end
+            end
+            reaper.ImGui_EndCombo(ctx)
+        end
+        
+        if format_idx == 1 then
+            local current_label = bd_list[bd_idx] == "32" and "32-bit float" or (bd_list[bd_idx] .. "-bit")
+            if reaper.ImGui_BeginCombo(ctx, "Bit Depth", current_label) then
+                for i, v in ipairs(bd_list) do
+                    local label = v == "32" and "32-bit float" or (v .. "-bit")
+                    if reaper.ImGui_Selectable(ctx, label, bd_idx == i) then bd_idx = i end
+                end
+                reaper.ImGui_EndCombo(ctx)
+            end
         else
+            if reaper.ImGui_BeginCombo(ctx, "Bitrate", br_list[br_idx]) then
+                for i, v in ipairs(br_list) do
+                    if reaper.ImGui_Selectable(ctx, v, br_idx == i) then br_idx = i end
+                end
+                reaper.ImGui_EndCombo(ctx)
+            end
+        end
+        reaper.ImGui_PopItemWidth(ctx)
+
+        reaper.ImGui_Dummy(ctx, 0, 15)
+        
+        if processing then
             reaper.ImGui_BeginDisabled(ctx)
-            reaper.ImGui_Button(ctx, "Awaiting file input...", col1_w, 45)
+            reaper.ImGui_Button(ctx, "Processing... REAPER may freeze briefly.", col1_w, 45)
             reaper.ImGui_EndDisabled(ctx)
+            
+            processing_frames = processing_frames + 1
+            if processing_frames > 2 then
+                ExecuteProcessing()
+                processing = false
+                process_triggered = false
+            end
+        else
+            if input_file ~= "" then
+                reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x228B22FF)
+                if reaper.ImGui_Button(ctx, "PROCESS OFFLINE", col1_w, 45) then
+                    process_triggered = true
+                    processing_frames = 0
+                end
+                reaper.ImGui_PopStyleColor(ctx)
+            else
+                reaper.ImGui_BeginDisabled(ctx)
+                reaper.ImGui_Button(ctx, "Awaiting file input...", col1_w, 45)
+                reaper.ImGui_EndDisabled(ctx)
+            end
         end
-    end
-    
-    if process_triggered and not processing then processing = true end
+        
+        if process_triggered and not processing then processing = true end
 
-    reaper.ImGui_EndGroup(ctx)
-    -- ================= END LEFT COLUMN =================
+        -- ================= RIGHT COLUMN (DSP Parameters) =================
+        -- Skip column index 1 (the 15px spacer Margin column) and go straight to 2!
+        reaper.ImGui_TableSetColumnIndex(ctx, 2)
+        
+        reaper.ImGui_PushItemWidth(ctx, slider_w)
+        
+        reaper.ImGui_Text(ctx, "TAPE PROPERTIES")
+        reaper.ImGui_Separator(ctx)
+        
+        reaper.ImGui_Text(ctx, "Tape Type:")
+        reaper.ImGui_SameLine(ctx)
+        if reaper.ImGui_RadioButton(ctx, "Cassette", tape_type_idx == 1) then tape_type_idx = 1 end
+        reaper.ImGui_SameLine(ctx)
+        if reaper.ImGui_RadioButton(ctx, "VHS", tape_type_idx == 2) then tape_type_idx = 2 end
+        
+        reaper.ImGui_Dummy(ctx, 0, 2)
+        rv, sat_amt = reaper.ImGui_SliderDouble(ctx, "Saturation Amount (%)", sat_amt, 0.0, 100.0, "%.1f")
+        
+        reaper.ImGui_Dummy(ctx, 0, 10)
+        
+        reaper.ImGui_Text(ctx, "TIME-WARP (WOW & FLUTTER)")
+        reaper.ImGui_Separator(ctx)
+        
+        rv, wow_rate = reaper.ImGui_SliderDouble(ctx, "Wow Rate (Hz)", wow_rate, 0.1, 5.0, "%.2f")
+        rv, wow_depth = reaper.ImGui_SliderDouble(ctx, "Wow Depth (%)", wow_depth, 0.0, 100.0, "%.1f")
+        rv, wow_var = reaper.ImGui_SliderDouble(ctx, "Wow Randomness (%)", wow_var, 0.0, 100.0, "%.1f")
+        
+        reaper.ImGui_Dummy(ctx, 0, 5)
+        
+        rv, flutter_rate = reaper.ImGui_SliderDouble(ctx, "Flutter Rate (Hz)", flutter_rate, 5.0, 30.0, "%.1f")
+        rv, flutter_depth = reaper.ImGui_SliderDouble(ctx, "Flutter Depth (%)", flutter_depth, 0.0, 100.0, "%.1f")
+        rv, flutter_var = reaper.ImGui_SliderDouble(ctx, "Flutter Randomness (%)", flutter_var, 0.0, 100.0, "%.1f")
 
-    reaper.ImGui_SameLine(ctx, 0, 30) -- Empty horizontal margin between the two columns
-
-    -- ================= RIGHT COLUMN (DSP Parameters) =================
-    reaper.ImGui_BeginGroup(ctx)
-    reaper.ImGui_PushItemWidth(ctx, slider_w)
-    
-    reaper.ImGui_Text(ctx, "TAPE PROPERTIES")
-    reaper.ImGui_Separator(ctx)
-    
-    reaper.ImGui_Text(ctx, "Tape Type:")
-    reaper.ImGui_SameLine(ctx)
-    if reaper.ImGui_RadioButton(ctx, "Cassette", tape_type_idx == 1) then tape_type_idx = 1 end
-    reaper.ImGui_SameLine(ctx)
-    if reaper.ImGui_RadioButton(ctx, "VHS", tape_type_idx == 2) then tape_type_idx = 2 end
-    
-    reaper.ImGui_Dummy(ctx, 0, 2)
-    rv, sat_amt = reaper.ImGui_SliderDouble(ctx, "Saturation Amount (%)", sat_amt, 0.0, 100.0, "%.1f")
-    
-    reaper.ImGui_Dummy(ctx, 0, 10)
-    
-    reaper.ImGui_Text(ctx, "TIME-WARP (WOW & FLUTTER)")
-    reaper.ImGui_Separator(ctx)
-    
-    rv, wow_rate = reaper.ImGui_SliderDouble(ctx, "Wow Rate (Hz)", wow_rate, 0.1, 5.0, "%.2f")
-    rv, wow_depth = reaper.ImGui_SliderDouble(ctx, "Wow Depth (%)", wow_depth, 0.0, 100.0, "%.1f")
-    rv, wow_var = reaper.ImGui_SliderDouble(ctx, "Wow Randomness (%)", wow_var, 0.0, 100.0, "%.1f")
-    
-    reaper.ImGui_Dummy(ctx, 0, 5)
-    
-    rv, flutter_rate = reaper.ImGui_SliderDouble(ctx, "Flutter Rate (Hz)", flutter_rate, 5.0, 30.0, "%.1f")
-    rv, flutter_depth = reaper.ImGui_SliderDouble(ctx, "Flutter Depth (%)", flutter_depth, 0.0, 100.0, "%.1f")
-    rv, flutter_var = reaper.ImGui_SliderDouble(ctx, "Flutter Randomness (%)", flutter_var, 0.0, 100.0, "%.1f")
-
-    reaper.ImGui_Dummy(ctx, 0, 10)
-    
-    reaper.ImGui_Text(ctx, "NOISE & DROPOUTS")
-    reaper.ImGui_Separator(ctx)
-    
-    if reaper.ImGui_BeginCombo(ctx, "Noise Type", noise_types[noise_type_idx]) then
-        for i, v in ipairs(noise_types) do
-            if reaper.ImGui_Selectable(ctx, v, noise_type_idx == i) then noise_type_idx = i end
+        reaper.ImGui_Dummy(ctx, 0, 10)
+        
+        reaper.ImGui_Text(ctx, "NOISE & DROPOUTS")
+        reaper.ImGui_Separator(ctx)
+        
+        if reaper.ImGui_BeginCombo(ctx, "Noise Type", noise_types[noise_type_idx]) then
+            for i, v in ipairs(noise_types) do
+                if reaper.ImGui_Selectable(ctx, v, noise_type_idx == i) then noise_type_idx = i end
+            end
+            reaper.ImGui_EndCombo(ctx)
         end
-        reaper.ImGui_EndCombo(ctx)
+        rv, noise_vol = reaper.ImGui_SliderDouble(ctx, "Noise Volume (%)", noise_vol, 0.0, 100.0, "%.1f")
+
+        reaper.ImGui_Dummy(ctx, 0, 5)
+        
+        rv, dropouts_en = reaper.ImGui_Checkbox(ctx, "Enable Dropouts", dropouts_en)
+        
+        if not dropouts_en then reaper.ImGui_BeginDisabled(ctx) end
+        rv, drop_filter_vol = reaper.ImGui_SliderDouble(ctx, "Filter Drop Depth (%)", drop_filter_vol, 0.0, 100.0, "%.1f")
+        rv, drop_doubling = reaper.ImGui_SliderDouble(ctx, "Doubling Depth (%)", drop_doubling, 0.0, 100.0, "%.1f")
+        rv, drop_delay_drift = reaper.ImGui_SliderDouble(ctx, "Delay Drift Depth (%)", drop_delay_drift, 0.0, 100.0, "%.1f")
+        rv, drop_prob = reaper.ImGui_SliderDouble(ctx, "Dropout Probability (%)", drop_prob, 0.0, 100.0, "%.1f")
+        if not dropouts_en then reaper.ImGui_EndDisabled(ctx) end
+
+        reaper.ImGui_PopItemWidth(ctx)
+
+        reaper.ImGui_EndTable(ctx)
     end
-    rv, noise_vol = reaper.ImGui_SliderDouble(ctx, "Noise Volume (%)", noise_vol, 0.0, 100.0, "%.1f")
-
-    reaper.ImGui_Dummy(ctx, 0, 5)
-    
-    rv, dropouts_en = reaper.ImGui_Checkbox(ctx, "Enable Dropouts", dropouts_en)
-    
-    if not dropouts_en then reaper.ImGui_BeginDisabled(ctx) end
-    rv, drop_filter_vol = reaper.ImGui_SliderDouble(ctx, "Filter & Vol Drop Depth (%)", drop_filter_vol, 0.0, 100.0, "%.1f")
-    rv, drop_doubling = reaper.ImGui_SliderDouble(ctx, "Doubling Depth (%)", drop_doubling, 0.0, 100.0, "%.1f")
-    rv, drop_delay_drift = reaper.ImGui_SliderDouble(ctx, "Drift Depth (%)", drop_delay_drift, 0.0, 100.0, "%.1f")
-    rv, drop_prob = reaper.ImGui_SliderDouble(ctx, "Dropout Probability (%)", drop_prob, 0.0, 100.0, "%.1f")
-    if not dropouts_en then reaper.ImGui_EndDisabled(ctx) end
-
-    reaper.ImGui_PopItemWidth(ctx)
-    reaper.ImGui_EndGroup(ctx)
-    -- ================= END RIGHT COLUMN =================
+    -- ================= END OF LAYOUT TABLE =================
 
     -- Modal behaves normally overlaying over the UI
     if reaper.ImGui_BeginPopupModal(ctx, "Save Preset Popup", nil, reaper.ImGui_WindowFlags_AlwaysAutoResize()) then
