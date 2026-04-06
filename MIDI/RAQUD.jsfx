@@ -1,0 +1,344 @@
+desc: RAQUD - Random Quantized MIDI Generator
+author: ZaurS2001
+version: 1.5.0
+about:
+  # RAQUD
+  A professional-grade random MIDI generator with integrated quantization.
+  - 100% eliminated GUI flicker (Optimized CPU & UI thread).
+  - Fixed black screen bug on project load.
+  - Added full modal scales (Dorian, Phrygian, Lydian, Mixolydian, etc).
+  - Perfect immediate playback on transport start.
+changelog:
+  - Initial ReaPack release (v1.5.0)
+
+slider1:0<0,1,1{Free (ms),Sync (Beats)}>Timing Mode
+slider2:6<0,11,1{8/1,4/1,2/1,1/1,1/2,1/4,1/8,1/16,1/32,1/4T,1/8T,1/16T}>Sync Rate
+slider3:250<10,2000,1>Free Rate (ms)
+slider4:36<0,127,1>Min Note
+slider5:84<0,127,1>Max Note
+slider6:0<-24,24,1>Tune / Transpose (st)
+slider7:50<5,100,1>Gate Length (%)
+slider8:2<0,12,1{Custom,Chromatic,Major,Minor,Pentatonic Maj,Pentatonic Min,Dorian,Phrygian,Lydian,Mixolydian,Locrian,Harmonic Minor,Melodic Minor}>Scale Preset
+slider9:0<0,1,1{Off,On}>Chord Mode
+slider22:3<2,7,1>Keys per Chord
+
+// Hidden sliders used for state saving and automation of the 12 piano keys
+slider10:1<0,1,1>-C
+slider11:1<0,1,1>-C#
+slider12:1<0,1,1>-D
+slider13:1<0,1,1>-D#
+slider14:1<0,1,1>-E
+slider15:1<0,1,1>-F
+slider16:1<0,1,1>-F#
+slider17:1<0,1,1>-G
+slider18:1<0,1,1>-G#
+slider19:1<0,1,1>-A
+slider20:1<0,1,1>-A#
+slider21:1<0,1,1>-B
+
+@init
+ext_noinit = 1; 
+NOTE_ON = 0x90;
+NOTE_OFF = 0x80;
+
+// Proper JSFX native background color handling
+gfx_clear = 30 + (30 * 256) + (34 * 65536); 
+
+valid_notes = 1000;      
+active_notes = 2000;     
+MAX_ACTIVE_NOTES = 128;  
+
+valid_count = 0;
+phase = 0;
+last_play_state = play_state;
+last_chord_mode = -1; // Force UI refresh on load
+sys_active_count = 0; // Huge CPU optimization tracker
+last_scale_preset = -1;
+gui_click_handled = 0;
+
+function clear_active_notes() local(i) (
+    i = 0;
+    while(i < MAX_ACTIVE_NOTES) (
+        active_notes[i*3 + 2] > 0 ? (
+            midisend(0, NOTE_OFF, active_notes[i*3], 0);
+            active_notes[i*3 + 2] = 0;
+        );
+        i += 1;
+    );
+    sys_active_count = 0;
+);
+
+function apply_preset(preset) (
+    preset == 1 ? ( slider10=1; slider11=1; slider12=1; slider13=1; slider14=1; slider15=1; slider16=1; slider17=1; slider18=1; slider19=1; slider20=1; slider21=1; ) : // Chromatic
+    preset == 2 ? ( slider10=1; slider11=0; slider12=1; slider13=0; slider14=1; slider15=1; slider16=0; slider17=1; slider18=0; slider19=1; slider20=0; slider21=1; ) : // Major
+    preset == 3 ? ( slider10=1; slider11=0; slider12=1; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=1; slider19=0; slider20=1; slider21=0; ) : // Minor
+    preset == 4 ? ( slider10=1; slider11=0; slider12=1; slider13=0; slider14=1; slider15=0; slider16=0; slider17=1; slider18=0; slider19=1; slider20=0; slider21=0; ) : // Pent Maj
+    preset == 5 ? ( slider10=1; slider11=0; slider12=0; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=0; slider19=0; slider20=1; slider21=0; ) : // Pent Min
+    preset == 6 ? ( slider10=1; slider11=0; slider12=1; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=0; slider19=1; slider20=1; slider21=0; ) : // Dorian
+    preset == 7 ? ( slider10=1; slider11=1; slider12=0; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=1; slider19=0; slider20=1; slider21=0; ) : // Phrygian
+    preset == 8 ? ( slider10=1; slider11=0; slider12=1; slider13=0; slider14=1; slider15=0; slider16=1; slider17=1; slider18=0; slider19=1; slider20=0; slider21=1; ) : // Lydian
+    preset == 9 ? ( slider10=1; slider11=0; slider12=1; slider13=0; slider14=1; slider15=1; slider16=0; slider17=1; slider18=0; slider19=1; slider20=1; slider21=0; ) : // Mixolydian
+    preset == 10 ? ( slider10=1; slider11=1; slider12=0; slider13=1; slider14=0; slider15=1; slider16=1; slider17=0; slider18=1; slider19=0; slider20=1; slider21=0; ) : // Locrian
+    preset == 11 ? ( slider10=1; slider11=0; slider12=1; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=1; slider19=0; slider20=0; slider21=1; ) : // Harm Minor
+    preset == 12 ? ( slider10=1; slider11=0; slider12=1; slider13=1; slider14=0; slider15=1; slider16=0; slider17=1; slider18=0; slider19=1; slider20=0; slider21=1; );   // Mel Minor
+);
+
+function build_quantizer_pool() local(n, note_class, is_active) (
+    valid_count = 0;
+    slider4 > slider5 ? ( temp = slider4; slider4 = slider5; slider5 = temp; );
+    
+    n = slider4;
+    while(n <= slider5) (
+        note_class = n % 12;
+        is_active = 0;
+        note_class == 0 ? is_active = slider10 : note_class == 1 ? is_active = slider11 : note_class == 2 ? is_active = slider12 :
+        note_class == 3 ? is_active = slider13 : note_class == 4 ? is_active = slider14 : note_class == 5 ? is_active = slider15 :
+        note_class == 6 ? is_active = slider16 : note_class == 7 ? is_active = slider17 : note_class == 8 ? is_active = slider18 :
+        note_class == 9 ? is_active = slider19 : note_class == 10 ? is_active = slider20 : note_class == 11 ? is_active = slider21;
+        
+        is_active ? ( valid_notes[valid_count] = n; valid_count += 1; );
+        n += 1;
+    );
+);
+
+function generate_note(offset_samples) local(notes_per_octave, root_idx, base_vel, num_notes, k, target_idx, octave_offset, note_raw, final_note, chord_vel, i, inserted) (
+    valid_count > 0 ? (
+        notes_per_octave = slider10+slider11+slider12+slider13+slider14+slider15+slider16+slider17+slider18+slider19+slider20+slider21;
+        root_idx = rand(valid_count)|0;
+        base_vel = 60 + (rand(47)|0); 
+        num_notes = slider9 == 1 ? slider22 : 1;
+        k = 0;
+        
+        while(k < num_notes) (
+            target_idx = root_idx + (k * 2);
+            octave_offset = 0;
+            notes_per_octave > 0 ? (
+                while(target_idx >= valid_count) ( target_idx -= notes_per_octave; octave_offset += 12; );
+            );
+            
+            note_raw = valid_notes[target_idx] + octave_offset;
+            final_note = note_raw + slider6; 
+            
+            final_note >= 0 && final_note <= 127 ? (
+                chord_vel = base_vel + (rand(10)|0) - 5;
+                chord_vel > 127 ? chord_vel = 127; chord_vel < 1 ? chord_vel = 1;
+                
+                midisend(offset_samples, NOTE_ON, final_note, chord_vel);
+                
+                i = 0; inserted = 0;
+                while(i < MAX_ACTIVE_NOTES && !inserted) (
+                    active_notes[i*3 + 2] <= 0 ? (
+                        active_notes[i*3] = final_note;
+                        active_notes[i*3 + 1] = chord_vel;
+                        active_notes[i*3 + 2] = max(1, (samples_per_cycle * (slider7 / 100))|0);
+                        inserted = 1;
+                        sys_active_count += 1; // Track for CPU optimization
+                    );
+                    i += 1;
+                );
+            );
+            k += 1;
+        );
+    );
+);
+
+@slider
+slider8 != last_scale_preset ? (
+    apply_preset(slider8);
+    last_scale_preset = slider8;
+);
+
+// Lock this behind a state checker! If slider_show is continuously called, REAPER stutters the GUI!
+slider9 != last_chord_mode ? (
+    slider_show(slider22, slider9 == 1);
+    last_chord_mode = slider9;
+);
+
+build_quantizer_pool();
+
+@block
+while(midirecv(offset, msg1, msg2, msg3)) ( midisend(offset, msg1, msg2, msg3); );
+
+tempo > 0 ? current_bpm = tempo : current_bpm = 120;
+slider1 == 0 ? ( // Free
+    samples_per_cycle = (slider3 / 1000) * srate;
+) : ( // Sync
+    q_note = (60.0 / current_bpm) * srate;
+    mult = 1.0;
+    slider2 == 0 ? mult = 32.0 : slider2 == 1 ? mult = 16.0 : slider2 == 2 ? mult = 8.0 :      
+    slider2 == 3 ? mult = 4.0 :  slider2 == 4 ? mult = 2.0 :  slider2 == 5 ? mult = 1.0 :      
+    slider2 == 6 ? mult = 0.5 :  slider2 == 7 ? mult = 0.25 : slider2 == 8 ? mult = 0.125 :    
+    slider2 == 9 ? mult = 1.0 * (2/3) : slider2 == 10 ? mult = 0.5 * (2/3) : slider2 == 11 ? mult = 0.25 * (2/3);  
+    samples_per_cycle = q_note * mult;
+);
+
+// Flawless Transport Tracking
+is_playing = play_state & 1;
+last_is_playing = last_play_state & 1;
+is_playing != last_is_playing ? (
+    is_playing ? (
+        phase = samples_per_cycle; // Pre-fill phase buffer instantly on Play
+    ) : (
+        clear_active_notes();
+        phase = 0;
+    );
+);
+last_play_state = play_state;
+
+is_playing > 0 ? (
+    s = 0;
+    while(s < samplesblock) (
+        
+        // HUGE CPU FIX: Only loop if voices are actively playing
+        sys_active_count > 0 ? (
+            i = 0; checked = 0;
+            while(i < MAX_ACTIVE_NOTES && checked < sys_active_count) (
+                active_notes[i*3 + 2] > 0 ? (
+                    checked += 1;
+                    active_notes[i*3 + 2] -= 1;
+                    active_notes[i*3 + 2] <= 0 ? ( 
+                        midisend(s, NOTE_OFF, active_notes[i*3], 0);
+                        sys_active_count -= 1;
+                    );
+                );
+                i += 1;
+            );
+        );
+        
+        phase += 1;
+        phase >= samples_per_cycle ? (
+            phase -= samples_per_cycle; 
+            generate_note(s);
+        );
+        s += 1;
+    );
+);
+
+
+@gfx 450 250
+gfx_setfont(1, "Arial", 16, 'b');
+gfx_setfont(2, "Arial", 12);
+gfx_setfont(3, "Arial", 24, 'b');
+
+// Title
+gfx_set(0.2, 0.6, 1.0, 1.0);
+gfx_x = 20; gfx_y = 15;
+gfx_setfont(3);
+gfx_drawstr("RAQUD ");
+gfx_setfont(1);
+gfx_set(0.6, 0.6, 0.6, 1.0);
+gfx_drawstr(" Random MIDI Generator");
+
+// Draw Piano Roll Quantizer
+key_w = 30;
+key_h = 100;
+start_x = 20;
+start_y = 60;
+
+function draw_white_key(id, x, y, active) (
+    active ? gfx_set(0.8, 0.9, 1.0, 1.0) : gfx_set(0.4, 0.4, 0.4, 1.0);
+    gfx_rect(x, y, key_w - 1, key_h);
+    gfx_set(0.1, 0.1, 0.1, 1.0);
+    gfx_rect(x, y, key_w - 1, key_h, 0); 
+);
+
+function draw_black_key(id, x, y, active) local(bw, bh) (
+    bw = key_w * 0.6;
+    bh = key_h * 0.6;
+    active ? gfx_set(0.2, 0.5, 0.8, 1.0) : gfx_set(0.05, 0.05, 0.05, 1.0);
+    gfx_rect(x - bw/2, y, bw, bh);
+    gfx_set(0.0, 0.0, 0.0, 1.0);
+    gfx_rect(x - bw/2, y, bw, bh, 0); 
+);
+
+w_states = 10000; b_states = 10010;
+w_states[0] = slider10; w_states[1] = slider12; w_states[2] = slider14; w_states[3] = slider15; 
+w_states[4] = slider17; w_states[5] = slider19; w_states[6] = slider21; 
+b_states[0] = slider11; b_states[1] = slider13; b_states[2] = slider16; b_states[3] = slider18; b_states[4] = slider20;
+
+i = 0;
+while(i < 7) (
+    draw_white_key(i, start_x + (i * key_w), start_y, w_states[i]);
+    i += 1;
+);
+
+draw_black_key(0, start_x + key_w, start_y, b_states[0]);
+draw_black_key(1, start_x + key_w*2, start_y, b_states[1]);
+draw_black_key(2, start_x + key_w*4, start_y, b_states[2]);
+draw_black_key(3, start_x + key_w*5, start_y, b_states[3]);
+draw_black_key(4, start_x + key_w*6, start_y, b_states[4]);
+
+mouse_cap & 1 && !gui_click_handled ? (
+    mx = mouse_x; my = mouse_y;
+    
+    mx >= start_x && mx <= start_x + (7*key_w) && my >= start_y && my <= start_y + key_h ? (
+        clicked_slider = -1;
+        
+        my <= start_y + (key_h*0.6) ? (
+            bx1 = start_x + key_w; mx >= bx1 - 9 && mx <= bx1 + 9 ? clicked_slider = 11;
+            bx2 = start_x + key_w*2; mx >= bx2 - 9 && mx <= bx2 + 9 ? clicked_slider = 13;
+            bx3 = start_x + key_w*4; mx >= bx3 - 9 && mx <= bx3 + 9 ? clicked_slider = 16;
+            bx4 = start_x + key_w*5; mx >= bx4 - 9 && mx <= bx4 + 9 ? clicked_slider = 18;
+            bx5 = start_x + key_w*6; mx >= bx5 - 9 && mx <= bx5 + 9 ? clicked_slider = 20;
+        );
+        
+        clicked_slider == -1 ? (
+            idx = ((mx - start_x) / key_w)|0;
+            idx == 0 ? clicked_slider = 10 : idx == 1 ? clicked_slider = 12 : idx == 2 ? clicked_slider = 14 :
+            idx == 3 ? clicked_slider = 15 : idx == 4 ? clicked_slider = 17 : idx == 5 ? clicked_slider = 19 :
+            idx == 6 ? clicked_slider = 21;
+        );
+        
+        clicked_slider != -1 ? (
+            clicked_slider == 10 ? slider10 = 1 - slider10 : clicked_slider == 11 ? slider11 = 1 - slider11 :
+            clicked_slider == 12 ? slider12 = 1 - slider12 : clicked_slider == 13 ? slider13 = 1 - slider13 :
+            clicked_slider == 14 ? slider14 = 1 - slider14 : clicked_slider == 15 ? slider15 = 1 - slider15 :
+            clicked_slider == 16 ? slider16 = 1 - slider16 : clicked_slider == 17 ? slider17 = 1 - slider17 :
+            clicked_slider == 18 ? slider18 = 1 - slider18 : clicked_slider == 19 ? slider19 = 1 - slider19 :
+            clicked_slider == 20 ? slider20 = 1 - slider20 : clicked_slider == 21 ? slider21 = 1 - slider21;
+            
+            slider8 = 0; 
+            sliderchange(slider8);
+            sliderchange(clicked_slider);
+            build_quantizer_pool(); 
+        );
+    );
+    gui_click_handled = 1;
+);
+!(mouse_cap & 1) ? gui_click_handled = 0;
+
+gfx_setfont(2);
+gfx_set(0.6, 0.6, 0.6, 1.0);
+
+gfx_x = 20; gfx_y = start_y + key_h + 15;
+gfx_drawstr("Click keys to toggle scale quantization.");
+
+gfx_x = 20; gfx_y = start_y + key_h + 35;
+gfx_set(0.8, 0.8, 0.8, 1.0);
+gfx_printf("Valid pool: %d notes in range.", valid_count);
+
+gfx_x = 260; gfx_y = 60;
+gfx_set(0.2, 0.6, 1.0, 1.0);
+gfx_drawstr("Timing Mode: ");
+gfx_set(0.9, 0.9, 0.9, 1.0);
+slider1 == 1 ? gfx_drawstr("SYNC") : gfx_drawstr("FREE");
+
+gfx_x = 260; gfx_y = 80;
+gfx_set(0.2, 0.6, 1.0, 1.0);
+gfx_drawstr("Chord Mode: ");
+gfx_set(0.9, 0.9, 0.9, 1.0);
+slider9 == 1 ? gfx_printf("ON (%d Notes)", slider22) : gfx_drawstr("OFF");
+
+gfx_x = 260; gfx_y = 100;
+gfx_set(0.5, 0.5, 0.5, 1.0);
+gfx_drawstr("Voices: ");
+gfx_set(0.2, 0.8, 0.2, 1.0);
+
+// Using sys_active_count saves CPU instead of looping in GFX
+gfx_printf("%d / %d", sys_active_count, MAX_ACTIVE_NOTES);
+
+!(play_state & 1) ? (
+    gfx_x = 260; gfx_y = 135;
+    gfx_set(1.0, 0.3, 0.3, 1.0);
+    gfx_drawstr("[TRANSPORT STOPPED]");
+);
