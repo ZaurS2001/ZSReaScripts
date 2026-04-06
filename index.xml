@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="30f9f16e4a4d1d69b86c0ebc02e4701bd2f3fc0d">
+<index version="1" name="ZSReaScripts" commit="5fdc8e0be4c07f1c73e6ece9c9d0428ab7a0b037">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -42,6 +42,21 @@
   </category>
   <category name="MIDI">
     <reapack name="RAQUD.jsfx" type="effect" desc="RAQUD - Random Quantized MIDI Generator">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 RAQUD\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A professional-grade random MIDI generator with integrated quantization.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab 100% eliminated GUI flicker (Optimized CPU & UI thread).\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Fixed black screen bug on project load.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Added full modal scales (Dorian, Phrygian, Lydian, Mixolydian, etc).\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Perfect immediate playback on transport start.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Dynamic DAW-style Timeline visualizer for active MIDI notes.\sa180\par}
+}
+]]></description>
+      </metadata>
       <version name="1.5.0" author="ZaurS2001" time="2026-04-06T13:09:00Z">
         <changelog><![CDATA[- Initial ReaPack release (v1.5.0)]]></changelog>
         <source>https://github.com/ZaurS2001/ZSReaScripts/raw/f4a58f89b167b23c0f2399f61201ca6d5ebdfcea/MIDI/RAQUD.jsfx</source>
