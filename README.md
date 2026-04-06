@@ -22,6 +22,10 @@ The following scripts are currently available in this ReaPack repository:
 
 A highly realistic, procedural analog tape degradation simulator that bridges a custom Python DSP engine with a seamless REAPER Lua interface. This script requires Python, FFmpeg, and the `numpy`, `scipy`, and `soundfile` Python packages. Please refer to its dedicated `README.md` file for detailed installation and usage instructions.
 
+### [RAQUD](./MIDI/RAQUD.jsfx)
+
+Quantized MIDI note/chord generator.
+
 ---
 
 ## 🤝 Contributing
