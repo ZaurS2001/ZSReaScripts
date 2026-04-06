@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="5fdc8e0be4c07f1c73e6ece9c9d0428ab7a0b037">
+<index version="1" name="ZSReaScripts" commit="48a15eca88ab17fe9afdce78312e0127af5e8236">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -50,10 +50,9 @@
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 RAQUD\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A professional-grade random MIDI generator with integrated quantization.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab 100% eliminated GUI flicker (Optimized CPU & UI thread).\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Fixed black screen bug on project load.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Added full modal scales (Dorian, Phrygian, Lydian, Mixolydian, etc).\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Perfect immediate playback on transport start.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Dynamic DAW-style Timeline visualizer for active MIDI notes.\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Smoothly scrolling DAW-style MIDI Timeline visualizer.\sa180\par}
 }
 ]]></description>
       </metadata>
@@ -63,6 +62,11 @@
       </version>
       <version name="1.6.0" author="ZaurS2001" time="2026-04-06T13:27:18Z">
         <source>https://github.com/ZaurS2001/ZSReaScripts/raw/30f9f16e4a4d1d69b86c0ebc02e4701bd2f3fc0d/MIDI/RAQUD.jsfx</source>
+      </version>
+      <version name="1.6.1" author="ZaurS2001" time="2026-04-06T13:55:03Z">
+        <changelog><![CDATA[- Fixed final stuck note issue when changing Gate Length to 100% (Added 1-sample safety gap to prevent NOTE_OFF/NOTE_ON collision). (v1.9.6)
+- Re-engineered active note array parsing to be 100% bulletproof under heavy slider automation.]]></changelog>
+        <source>https://github.com/ZaurS2001/ZSReaScripts/raw/48a15eca88ab17fe9afdce78312e0127af5e8236/MIDI/RAQUD.jsfx</source>
       </version>
     </reapack>
   </category>
