@@ -1,16 +1,16 @@
 desc: RAQUD - Random Quantized MIDI Generator
 author: ZaurS2001
-version: 1.6.0
+version: 1.6.1
 about:
   # RAQUD
   A professional-grade random MIDI generator with integrated quantization.
   - 100% eliminated GUI flicker (Optimized CPU & UI thread).
-  - Fixed black screen bug on project load.
   - Added full modal scales (Dorian, Phrygian, Lydian, Mixolydian, etc).
   - Perfect immediate playback on transport start.
-  - Dynamic DAW-style Timeline visualizer for active MIDI notes.
+  - Smoothly scrolling DAW-style MIDI Timeline visualizer.
 changelog:
-  - Added real-time looping MIDI clip timeline visualizer with playhead. (v1.6.0)
+  - Fixed final stuck note issue when changing Gate Length to 100% (Added 1-sample safety gap to prevent NOTE_OFF/NOTE_ON collision). (v1.9.6)
+  - Re-engineered active note array parsing to be 100% bulletproof under heavy slider automation.
 
 slider1:0<0,1,1{Free (ms),Sync (Beats)}>Timing Mode
 slider2:6<0,11,1{8/1,4/1,2/1,1/1,1/2,1/4,1/8,1/16,1/32,1/4T,1/8T,1/16T}>Sync Rate
@@ -46,19 +46,18 @@ gfx_clear = 30 + (30 * 256) + (34 * 65536);
 
 valid_notes = 1000;      
 active_notes = 2000;     
+TEMP_CHORD_BUF = 3000;   
 MAX_ACTIVE_NOTES = 128;  
 
 w_states = 9000; 
 b_states = 9010;
 
+// Ring Buffer for Timeline
 VIS_BUF = 10000;
 MAX_VIS = 256;
-VIS_CYCLES = 4;
+vis_head = 0;
 vis_count = 0;
-vis_cycle = 0;
-last_spc = 0;
-vis_p_min = 127;
-vis_p_max = 0;
+internal_time = 0;
 
 valid_count = 0;
 phase = 0;
@@ -113,53 +112,74 @@ function build_quantizer_pool() local(n, note_class, is_active) (
     );
 );
 
-function generate_note(offset_samples) local(notes_per_octave, root_idx, base_vel, num_notes, k, target_idx, octave_offset, note_raw, final_note, chord_vel, i, inserted) (
+function generate_note(offset_samples) local(base_vel, num_notes, avail_count, n, cand, is_playing_now, j, picks, k, rand_idx, final_note, chord_vel, calc_len, i, inserted) (
     valid_count > 0 ? (
-        notes_per_octave = slider10+slider11+slider12+slider13+slider14+slider15+slider16+slider17+slider18+slider19+slider20+slider21;
-        root_idx = rand(valid_count)|0;
         base_vel = 60 + (rand(47)|0); 
         num_notes = slider9 == 1 ? slider22 : 1;
-        k = 0;
         
-        while(k < num_notes) (
-            target_idx = root_idx + (k * 2);
-            octave_offset = 0;
-            notes_per_octave > 0 ? (
-                while(target_idx >= valid_count) ( target_idx -= notes_per_octave; octave_offset += 12; );
-            );
-            
-            note_raw = valid_notes[target_idx] + octave_offset;
-            final_note = note_raw + slider6; 
-            
-            final_note >= 0 && final_note <= 127 ? (
-                chord_vel = base_vel + (rand(10)|0) - 5;
-                chord_vel > 127 ? chord_vel = 127; chord_vel < 1 ? chord_vel = 1;
-                
-                midisend(offset_samples, NOTE_ON, final_note, chord_vel);
-                
-                i = 0; inserted = 0;
-                while(i < MAX_ACTIVE_NOTES && !inserted) (
-                    active_notes[i*3 + 2] <= 0 ? (
-                        active_notes[i*3] = final_note;
-                        active_notes[i*3 + 1] = chord_vel;
-                        active_notes[i*3 + 2] = max(1, (samples_per_cycle * (slider7 / 100))|0);
-                        inserted = 1;
-                        sys_active_count += 1;
-                        
-                        // Feed Timeline Visualizer
-                        vis_count < MAX_VIS ? (
-                            VIS_BUF[vis_count*4] = final_note;
-                            VIS_BUF[vis_count*4 + 1] = vis_cycle * samples_per_cycle + offset_samples;
-                            VIS_BUF[vis_count*4 + 2] = active_notes[i*3 + 2];
-                            VIS_BUF[vis_count*4 + 3] = chord_vel;
-                            vis_count += 1;
-                            
-                            final_note < vis_p_min ? vis_p_min = final_note;
-                            final_note > vis_p_max ? vis_p_max = final_note;
-                        );
-                    );
-                    i += 1;
+        // 1. Build Intelligent Pool (Exclude already-playing notes)
+        avail_count = 0;
+        n = 0;
+        while(n < valid_count) (
+            cand = valid_notes[n] + slider6;
+            cand >= 0 && cand <= 127 ? (
+                is_playing_now = 0;
+                j = 0;
+                while(j < MAX_ACTIVE_NOTES && !is_playing_now) (
+                    active_notes[j*3 + 2] > 0 && active_notes[j*3] == cand ? is_playing_now = 1;
+                    j += 1;
                 );
+                
+                !is_playing_now ? (
+                    TEMP_CHORD_BUF[avail_count] = cand;
+                    avail_count += 1;
+                );
+            );
+            n += 1;
+        );
+        
+        // 2. Safely pick up to num_notes
+        picks = num_notes;
+        picks > avail_count ? picks = avail_count;
+        
+        // 3. Prevent NOTE_OFF / NOTE_ON same-sample collision at 100% gate
+        calc_len = (samples_per_cycle * (slider7 / 100))|0;
+        calc_len >= samples_per_cycle ? calc_len = samples_per_cycle - 1;
+        
+        k = 0;
+        while(k < picks) (
+            // Pick random available note
+            rand_idx = rand(avail_count)|0;
+            final_note = TEMP_CHORD_BUF[rand_idx];
+            
+            // Swap to prevent duplicate picking in this same chord
+            avail_count -= 1;
+            TEMP_CHORD_BUF[rand_idx] = TEMP_CHORD_BUF[avail_count];
+            
+            chord_vel = base_vel + (rand(10)|0) - 5;
+            chord_vel > 127 ? chord_vel = 127; chord_vel < 1 ? chord_vel = 1;
+            
+            midisend(offset_samples, NOTE_ON, final_note, chord_vel);
+            
+            i = 0; inserted = 0;
+            while(i < MAX_ACTIVE_NOTES && !inserted) (
+                active_notes[i*3 + 2] <= 0 ? (
+                    active_notes[i*3] = final_note;
+                    active_notes[i*3 + 1] = chord_vel;
+                    active_notes[i*3 + 2] = max(1, calc_len);
+                    inserted = 1;
+                    sys_active_count += 1;
+                    
+                    // Push to sliding Ring Buffer
+                    VIS_BUF[vis_head*4 + 0] = final_note;
+                    VIS_BUF[vis_head*4 + 1] = internal_time;
+                    VIS_BUF[vis_head*4 + 2] = active_notes[i*3 + 2] / srate; 
+                    VIS_BUF[vis_head*4 + 3] = chord_vel;
+                    
+                    vis_head = (vis_head + 1) % MAX_VIS;
+                    vis_count < MAX_VIS ? vis_count += 1;
+                );
+                i += 1;
             );
             k += 1;
         );
@@ -195,23 +215,12 @@ slider1 == 0 ? (
     samples_per_cycle = q_note * mult;
 );
 
-last_spc != samples_per_cycle ? (
-    last_spc = samples_per_cycle;
-    vis_count = 0;
-    vis_cycle = 0;
-    phase = 0; 
-    clear_active_notes();
-    vis_p_min = 127; vis_p_max = 0;
-);
-
 is_playing = play_state & 1;
-last_is_playing = last_play_state & 1;
-is_playing != last_is_playing ? (
+is_playing != (last_play_state & 1) ? (
     is_playing ? (
         phase = samples_per_cycle; 
-        vis_cycle = -1; 
+        vis_head = 0; 
         vis_count = 0;
-        vis_p_min = 127; vis_p_max = 0;
     ) : (
         clear_active_notes();
         phase = 0;
@@ -222,30 +231,26 @@ last_play_state = play_state;
 is_playing > 0 ? (
     s = 0;
     while(s < samplesblock) (
-        sys_active_count > 0 ? (
-            i = 0; checked = 0;
-            while(i < MAX_ACTIVE_NOTES && checked < sys_active_count) (
-                active_notes[i*3 + 2] > 0 ? (
-                    checked += 1;
-                    active_notes[i*3 + 2] -= 1;
-                    active_notes[i*3 + 2] <= 0 ? ( 
-                        midisend(s, NOTE_OFF, active_notes[i*3], 0);
-                        sys_active_count -= 1;
-                    );
+        internal_time += 1.0 / srate;
+        
+        // Fully robust 128-slot sweep (Zero chance of array starvation on automation)
+        i = 0;
+        while(i < MAX_ACTIVE_NOTES) (
+            active_notes[i*3 + 2] > 0 ? (
+                active_notes[i*3 + 2] -= 1;
+                active_notes[i*3 + 2] <= 0 ? ( 
+                    midisend(s, NOTE_OFF, active_notes[i*3], 0);
+                    active_notes[i*3 + 2] = 0; // Lock cleanly to 0
+                    sys_active_count -= 1;
+                    sys_active_count < 0 ? sys_active_count = 0;
                 );
-                i += 1;
             );
+            i += 1;
         );
         
         phase += 1;
         phase >= samples_per_cycle ? (
             phase -= samples_per_cycle; 
-            vis_cycle += 1;
-            vis_cycle >= VIS_CYCLES ? (
-                vis_cycle = 0;
-                vis_count = 0;
-                vis_p_min = 127; vis_p_max = 0;
-            );
             generate_note(s);
         );
         s += 1;
@@ -376,102 +381,140 @@ gfx_printf("%d / %d", sys_active_count, MAX_ACTIVE_NOTES);
     gfx_drawstr("[TRANSPORT STOPPED]");
 );
 
-// === TIMELINE VISUALIZER ===
+// === DAW STYLE SLIDING TIMELINE VISUALIZER ===
 tx = 20; 
 ty = 230; 
 tw = gfx_w - 40; 
 th = gfx_h - ty - 20;
 
-// Draw timeline grid / cycle backgrounds
-c = 0;
-while(c < VIS_CYCLES) (
-    c % 2 == 0 ? gfx_set(0.18, 0.18, 0.18, 1.0) : gfx_set(0.14, 0.14, 0.14, 1.0);
-    gfx_rect(tx + (c / VIS_CYCLES) * tw, ty, tw / VIS_CYCLES, th);
-    c += 1;
+// Time window
+view_window_s = slider1 == 1 ? (120.0 / current_bpm) * 2.0 : 3.0; 
+t_playhead = internal_time;
+t_start = t_playhead - (view_window_s * 0.85);
+t_end = t_playhead + (view_window_s * 0.15);
+
+// 1. Establish Base Min/Max from sliders
+p_min_base = slider4 < slider5 ? slider4 : slider5;
+p_max_base = slider4 > slider5 ? slider4 : slider5;
+p_min = max(0, min(127, p_min_base + slider6));
+p_max = max(0, min(127, p_max_base + slider6));
+
+// 2. Expand dynamically based on ACTUALLY visible generated notes
+i = 0;
+while(i < vis_count) (
+    idx = vis_head - 1 - i;
+    idx < 0 ? idx += MAX_VIS;
+    
+    pitch = VIS_BUF[idx*4 + 0];
+    start_s = VIS_BUF[idx*4 + 1];
+    len_s = VIS_BUF[idx*4 + 2];
+    
+    // If the note is currently visible in the timeline window
+    start_s + len_s >= t_start && start_s <= t_end ? (
+        pitch < p_min ? p_min = pitch;
+        pitch > p_max ? p_max = pitch;
+    );
+    i += 1;
+);
+
+// 3. Ensure visual padding and minimum zoom level (at least 1 octave)
+p_min -= 1;
+p_max += 1;
+p_range = p_max - p_min + 1;
+
+p_range < 14 ? ( 
+    mid = (p_min + p_max) / 2;
+    p_min = (mid - 7)|0;
+    p_max = (mid + 7)|0;
+);
+
+// Clamp bounds just in case
+p_min < 0 ? p_min = 0;
+p_max > 127 ? p_max = 127;
+p_range = p_max - p_min + 1;
+row_h = th / max(1, p_range);
+
+// Draw Background and sliding grid stripes
+gfx_set(0.14, 0.14, 0.14, 1.0);
+gfx_rect(tx, ty, tw, th);
+
+gfx_set(0.2, 0.2, 0.2, 1.0);
+grid_step = view_window_s / 8;
+div = t_start / grid_step;
+first_line = (floor(div) + 1) * grid_step;
+g_s = first_line;
+while(g_s <= t_end) (
+    gx = tx + ((g_s - t_start) / view_window_s) * tw;
+    gx >= tx && gx <= tx + tw ? (
+        gfx_line(gx, ty, gx, ty + th);
+    );
+    g_s += grid_step;
 );
 
 gfx_set(0.3, 0.3, 0.3, 1.0);
 gfx_rect(tx, ty, tw, th, 0);
 
-// Calculate Timeline Note Y-Bounds dynamically based on generated notes
-p_min = vis_p_min; 
-p_max = vis_p_max;
-vis_count == 0 ? (
-    p_min = (slider4 < slider5 ? slider4 : slider5) + slider6;
-    p_max = (slider4 > slider5 ? slider4 : slider5) + slider6;
-);
-
-p_range = p_max - p_min + 1;
-p_range < 12 ? (
-    mid = (p_max + p_min) / 2;
-    p_min = max(0, mid - 6)|0;
-    p_max = min(127, mid + 6)|0;
-    p_range = p_max - p_min + 1;
-);
-p_min -= 1;
-p_max += 1;
-p_range += 2;
-
-row_h = th / p_range;
-global_s = vis_cycle * samples_per_cycle + phase;
-
-// Render Note Blocks
+// Draw Notes from Ring Buffer
 i = 0;
 while(i < vis_count) (
-    pitch = VIS_BUF[i*4];
-    start_s = VIS_BUF[i*4 + 1];
-    len_s = VIS_BUF[i*4 + 2];
-    vel = VIS_BUF[i*4 + 3];
+    idx = vis_head - 1 - i;
+    idx < 0 ? idx += MAX_VIS;
     
-    nx = tx + (start_s / (samples_per_cycle * VIS_CYCLES)) * tw;
-    nw = (len_s / (samples_per_cycle * VIS_CYCLES)) * tw;
-    nw > (tx + tw - nx) ? nw = tx + tw - nx; 
+    pitch = VIS_BUF[idx*4 + 0];
+    start_s = VIS_BUF[idx*4 + 1];
+    len_s = VIS_BUF[idx*4 + 2];
+    vel = VIS_BUF[idx*4 + 3];
+    
+    nx = tx + ((start_s - t_start) / view_window_s) * tw;
+    nw = (len_s / view_window_s) * tw;
+    
+    draw_x = max(tx, nx);
+    draw_r = min(tx + tw, nx + nw);
+    draw_w = draw_r - draw_x;
     
     ny = ty + th - ((pitch - p_min + 1) * row_h);
     nh = row_h;
     
-    is_active = (global_s >= start_s && global_s <= start_s + len_s);
-    
-    // Fill Note Block
-    is_active ? gfx_set(0.3, 0.7, 1.0, 1.0) : gfx_set(0.15, 0.4, 0.6, 0.8);
-    vel_alpha = 0.5 + (vel / 127.0) * 0.5;
-    is_active ? gfx_a = 1.0 : gfx_a = vel_alpha;
-    gfx_rect(nx, ny, nw, nh);
-    
-    // Border
-    gfx_set(0.05, 0.1, 0.2, 1.0);
-    gfx_rect(nx, ny, nw, nh, 0);
-    
-    // Calculate and write the exact note name (e.g., C#3) directly inside the rectangle
-    oct = (pitch / 12)|0 - 1;
-    n_idx = pitch % 12;
-    n_idx == 0 ? n_str = "C" : n_idx == 1 ? n_str = "C#" : n_idx == 2 ? n_str = "D" :
-    n_idx == 3 ? n_str = "D#" : n_idx == 4 ? n_str = "E" : n_idx == 5 ? n_str = "F" :
-    n_idx == 6 ? n_str = "F#" : n_idx == 7 ? n_str = "G" : n_idx == 8 ? n_str = "G#" :
-    n_idx == 9 ? n_str = "A" : n_idx == 10 ? n_str = "A#" : n_str = "B";
-    
-    sprintf(#note_label, "%s%d", n_str, oct);
-    
-    f_size = min(12, max(8, nh - 2));
-    gfx_setfont(4, "Arial", f_size, 'b');
-    gfx_measurestr(#note_label, str_w, str_h);
-    
-    // Only print if there is room for the text to fit cleanly
-    str_w <= nw - 4 && nh >= 10 ? (
-        gfx_x = nx + 4;
-        gfx_y = ny + (nh - str_h)/2;
-        gfx_set(0.0, 0.0, 0.0, 0.8);
-        gfx_drawstr(#note_label);
+    // Draw note if within bounds and timeline window
+    draw_w > 0 && pitch >= p_min && pitch <= p_max ? (
+        is_active = (internal_time >= start_s && internal_time <= start_s + len_s);
+        
+        is_active ? gfx_set(0.3, 0.7, 1.0, 1.0) : gfx_set(0.15, 0.4, 0.6, 0.8);
+        vel_alpha = 0.5 + (vel / 127.0) * 0.5;
+        is_active ? gfx_a = 1.0 : gfx_a = vel_alpha;
+        
+        gfx_rect(draw_x, ny, draw_w, nh);
+        
+        // Border
+        gfx_set(0.05, 0.1, 0.2, 1.0);
+        gfx_rect(draw_x, ny, draw_w, nh, 0);
+        
+        // Generate Note Label (e.g. C#4)
+        oct = (pitch / 12)|0 - 1;
+        n_idx = pitch % 12;
+        n_idx == 0 ? n_str = "C" : n_idx == 1 ? n_str = "C#" : n_idx == 2 ? n_str = "D" :
+        n_idx == 3 ? n_str = "D#" : n_idx == 4 ? n_str = "E" : n_idx == 5 ? n_str = "F" :
+        n_idx == 6 ? n_str = "F#" : n_idx == 7 ? n_str = "G" : n_idx == 8 ? n_str = "G#" :
+        n_idx == 9 ? n_str = "A" : n_idx == 10 ? n_str = "A#" : n_str = "B";
+        sprintf(#note_label, "%s%d", n_str, oct);
+        
+        f_size = min(12, max(8, nh - 2));
+        gfx_setfont(4, "Arial", f_size, 'b');
+        gfx_measurestr(#note_label, str_w, str_h);
+        
+        // Sticky Text: text aligns to the left visible edge
+        str_w <= draw_w - 4 && nh >= 10 ? (
+            gfx_x = draw_x + 4;
+            gfx_y = ny + (nh - str_h)/2;
+            gfx_set(0.0, 0.0, 0.0, 0.8);
+            gfx_drawstr(#note_label);
+        );
     );
     i += 1;
 );
 
-// Draw the Playhead over the top of the blocks
-(play_state & 1) && samples_per_cycle > 0 ? (
-    playhead_x = tx + (global_s / (samples_per_cycle * VIS_CYCLES)) * tw;
-    playhead_x > tx + tw ? playhead_x = tx + tw;
-    
-    gfx_set(1.0, 0.8, 0.2, 0.9);
-    gfx_line(playhead_x, ty, playhead_x, ty + th);
-    gfx_triangle(playhead_x - 5, ty - 5, playhead_x + 5, ty - 5, playhead_x, ty);
-);
+// Draw Static Playhead (only glows when playing)
+playhead_x = tx + (tw * 0.85);
+play_state & 1 ? gfx_set(1.0, 0.8, 0.2, 0.9) : gfx_set(0.5, 0.5, 0.5, 0.5);
+gfx_line(playhead_x, ty, playhead_x, ty + th);
+gfx_triangle(playhead_x - 5, ty - 5, playhead_x + 5, ty - 5, playhead_x, ty);
