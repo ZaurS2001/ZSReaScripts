@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="48a15eca88ab17fe9afdce78312e0127af5e8236">
+<index version="1" name="ZSReaScripts" commit="ca23397c102eade660760149cda6fff1f2a5f598">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -67,6 +67,13 @@
         <changelog><![CDATA[- Fixed final stuck note issue when changing Gate Length to 100% (Added 1-sample safety gap to prevent NOTE_OFF/NOTE_ON collision). (v1.9.6)
 - Re-engineered active note array parsing to be 100% bulletproof under heavy slider automation.]]></changelog>
         <source>https://github.com/ZaurS2001/ZSReaScripts/raw/48a15eca88ab17fe9afdce78312e0127af5e8236/MIDI/RAQUD.jsfx</source>
+      </version>
+      <version name="1.6.2" author="ZaurS2001" time="2026-04-07T08:53:06Z">
+        <changelog><![CDATA[- Fixed note labels disappearing on short 1/16th notes (Removed strict text width bounding box). (v2.0.1)
+- Fixed "Off the grid" issue: Sync mode now ties to REAPER's native beat_position.
+- Fixed flickering on Virtual Keyboard and Timeline via thread-safe array snapshotting.
+- Fixed hanging notes on FX Bypass (Added CC 123 All Notes Off panic blast on un-bypass).]]></changelog>
+        <source>https://github.com/ZaurS2001/ZSReaScripts/raw/ca23397c102eade660760149cda6fff1f2a5f598/MIDI/RAQUD.jsfx</source>
       </version>
     </reapack>
   </category>
