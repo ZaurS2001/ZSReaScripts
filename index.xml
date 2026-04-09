@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="20784d3b7be233fd97b48822db58b6c4fe349268">
+<index version="1" name="ZSReaScripts" commit="012807ce89827406a76205c849e4bb473a224de8">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -49,7 +49,6 @@
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 RAQUD\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 A professional-grade random MIDI generator with integrated quantization.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab 100% eliminated GUI flicker (Optimized CPU & UI thread).\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Perfect immediate playback on transport start.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Smoothly scrolling DAW-style MIDI Timeline visualizer.\sa180\par}
 }
@@ -79,6 +78,12 @@
 - Fixed "First note muted" bug (Removed internal CC 123 race condition, again...).
 - Fixed visualizer "Ghost Notes" by instantly flushing the buffer on transport loops and timeline clicks.]]></changelog>
         <source>https://github.com/ZaurS2001/ZSReaScripts/raw/20784d3b7be233fd97b48822db58b6c4fe349268/MIDI/RAQUD.jsfx</source>
+      </version>
+      <version name="1.6.4" author="ZaurS2001" time="2026-04-09T17:25:07Z">
+        <changelog><![CDATA[- CRITICAL FIX: Fixed "Free Mode" Phase Burst bug. Dragging the Free Rate slider no longer spawns massive overlapping vomit chords. (v1.6.4)
+- CRITICAL FIX: Visualizer now mirrors the audio choke engine. Choked notes are visually truncated instantly, eliminating stacking/ghosting.
+- Fixed overhangs: Notes now clip flawlessly to the playhead line upon transport stop.]]></changelog>
+        <source>https://github.com/ZaurS2001/ZSReaScripts/raw/012807ce89827406a76205c849e4bb473a224de8/MIDI/RAQUD.jsfx</source>
       </version>
     </reapack>
   </category>
