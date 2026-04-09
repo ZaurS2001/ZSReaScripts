@@ -1,16 +1,15 @@
 desc: RAQUD - Random Quantized MIDI Generator
 author: ZaurS2001
-version: 1.6.3
+version: 1.6.4
 about:
   # RAQUD
   A professional-grade random MIDI generator with integrated quantization.
-  - 100% eliminated GUI flicker (Optimized CPU & UI thread).
   - Perfect immediate playback on transport start.
   - Smoothly scrolling DAW-style MIDI Timeline visualizer.
 changelog:
-  - CRITICAL FIX: Rewrote Sync Engine to an absolute "Integer Grid Tracker". Flawlessly triggers the exact microsecond transport starts. (v1.6.3)
-  - Fixed "First note muted" bug (Removed internal CC 123 race condition, again...).
-  - Fixed visualizer "Ghost Notes" by instantly flushing the buffer on transport loops and timeline clicks.
+  - CRITICAL FIX: Fixed "Free Mode" Phase Burst bug. Dragging the Free Rate slider no longer spawns massive overlapping vomit chords. (v1.6.4)
+  - CRITICAL FIX: Visualizer now mirrors the audio choke engine. Choked notes are visually truncated instantly, eliminating stacking/ghosting.
+  - Fixed overhangs: Notes now clip flawlessly to the playhead line upon transport stop.
 
 slider1:0<0,1,1{Free (ms),Sync (Beats)}>Timing Mode
 slider2:6<0,11,1{8/1,4/1,2/1,1/1,1/2,1/4,1/8,1/16,1/32,1/4T,1/8T,1/16T}>Sync Rate
@@ -113,7 +112,7 @@ function build_quantizer_pool() local(n, note_class, is_active) (
     );
 );
 
-function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_notes, picks, k, target_idx, is_dup, c, final_note, chord_vel, i, inserted, j, attempts) (
+function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_notes, picks, k, target_idx, is_dup, c, final_note, chord_vel, i, inserted, j, attempts, v) (
     valid_count > 0 ? (
         base_vel = 60 + (rand(47)|0); 
         num_notes = slider9 == 1 ? slider22 : 1;
@@ -123,7 +122,6 @@ function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_
         
         k = 0;
         while(k < picks) (
-            // Robust Rejection Sampling with infinite-loop failsafe
             is_dup = 1;
             attempts = 0;
             while(is_dup && attempts < 100) (
@@ -141,13 +139,22 @@ function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_
             final_note = valid_notes[target_idx] + slider6; 
             
             final_note >= 0 && final_note <= 127 ? (
-                // SURGICAL KILL: Ensure this specific pitch is absolutely dead before sending a new NOTE_ON
+                // SURGICAL KILL: Ensure pitch is dead before sending a new NOTE_ON
                 j = 0;
                 while(j < MAX_ACTIVE_NOTES) (
                     active_notes[j*3 + 2] > 0 && active_notes[j*3] == final_note ? (
                         midisend(offset_samples, NOTE_OFF, final_note, 0);
                         active_notes[j*3 + 2] = 0; 
                         sys_active_count -= 1;
+                        
+                        // CRITICAL FIX: Mirror the choke to the visualizer! Prevents stacking vomit.
+                        v = 0;
+                        while(v < MAX_VIS) (
+                            VIS_BUF[v*4 + 0] == final_note && VIS_BUF[v*4 + 1] <= proj_time && (VIS_BUF[v*4 + 1] + VIS_BUF[v*4 + 2] > proj_time) ? (
+                                VIS_BUF[v*4 + 2] = max(0, proj_time - VIS_BUF[v*4 + 1]);
+                            );
+                            v += 1;
+                        );
                     );
                     j += 1;
                 );
@@ -218,11 +225,11 @@ is_playing != last_is_playing ? (
     !is_playing ? (
         clear_active_notes(0);
         
-        // STOPPED: Instantly Truncate Visualizer Notes so they don't overhang the playhead
+        // STOPPED: Instantly Truncate Visualizer Notes exactly to the playhead
         v = 0;
         while(v < MAX_VIS) (
-            VIS_BUF[v*4 + 1] + VIS_BUF[v*4 + 2] > last_stop_time ? (
-                VIS_BUF[v*4 + 2] = max(0, last_stop_time - VIS_BUF[v*4 + 1]);
+            VIS_BUF[v*4 + 1] + VIS_BUF[v*4 + 2] > play_position ? (
+                VIS_BUF[v*4 + 2] = max(0, play_position - VIS_BUF[v*4 + 1]);
             );
             v += 1;
         );
@@ -257,13 +264,10 @@ is_playing > 0 ? (
         trigger = 0;
         slider1 == 1 ? (
             current_beat = beat_position + (s / srate) * (current_bpm / 60.0);
-            
-            // JITTER-PROOF INTEGER GRID TRACKING
             adj_beat = current_beat + 0.0001; 
             
             // Detect Jumps / Loops
             abs(current_beat - last_beat) > 0.1 ? (
-                // Force the next integer evaluation to trigger instantly
                 last_grid_step = floor(adj_beat / beat_step) - 1; 
                 clear_active_notes(s);
                 vis_count = 0; vis_head = 0; 
@@ -279,10 +283,10 @@ is_playing > 0 ? (
             last_beat = current_beat;
             calc_len = (beat_step * (60.0 / current_bpm) * srate * (slider7 / 100.0))|0;
         ) : (
-            // FREE RATE 
+            // FREE RATE
             phase += 1;
             phase >= samples_per_cycle ? (
-                phase -= samples_per_cycle; 
+                phase = 0; // CRITICAL FIX: Sets to 0 instead of subtracting. Destroys the "Slider Drag Burst" bug.
                 trigger = 1;
             );
             calc_len = (samples_per_cycle * (slider7 / 100.0))|0;
@@ -297,7 +301,6 @@ is_playing > 0 ? (
 
         s += 1;
     );
-    last_stop_time = play_position + (samplesblock / srate);
 );
 
 
@@ -436,7 +439,7 @@ tw = gfx_w - 40;
 th = gfx_h - ty - 20;
 
 view_window_s = slider1 == 1 ? (120.0 / current_bpm) * 2.0 : 3.0; 
-t_playhead = (play_state & 1) ? play_position : last_stop_time;
+t_playhead = play_position;
 t_start = t_playhead - (view_window_s * 0.85);
 t_end = t_playhead + (view_window_s * 0.15);
 
@@ -522,7 +525,7 @@ while(i < safe_vis_count) (
     ny = ty + th - ((pitch - p_min + 1) * row_h);
     nh = row_h;
     
-    draw_w > 0 && pitch >= p_min && pitch <= p_max ? (
+    draw_w > 0.1 && pitch >= p_min && pitch <= p_max ? (
         is_active = (play_state & 1) && (t_playhead >= start_s && t_playhead <= start_s + len_s);
         
         is_active ? gfx_set(0.3, 0.7, 1.0, 1.0) : gfx_set(0.15, 0.4, 0.6, 0.8);
