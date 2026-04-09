@@ -1,18 +1,16 @@
 desc: RAQUD - Random Quantized MIDI Generator
 author: ZaurS2001
-version: 1.6.2
+version: 1.6.3
 about:
   # RAQUD
   A professional-grade random MIDI generator with integrated quantization.
   - 100% eliminated GUI flicker (Optimized CPU & UI thread).
-  - Added full modal scales (Dorian, Phrygian, Lydian, Mixolydian, etc).
   - Perfect immediate playback on transport start.
   - Smoothly scrolling DAW-style MIDI Timeline visualizer.
 changelog:
-  - Fixed note labels disappearing on short 1/16th notes (Removed strict text width bounding box). (v2.0.1)
-  - Fixed "Off the grid" issue: Sync mode now ties to REAPER's native beat_position.
-  - Fixed flickering on Virtual Keyboard and Timeline via thread-safe array snapshotting.
-  - Fixed hanging notes on FX Bypass (Added CC 123 All Notes Off panic blast on un-bypass).
+  - CRITICAL FIX: Rewrote Sync Engine to an absolute "Integer Grid Tracker". Flawlessly triggers the exact microsecond transport starts. (v1.6.3)
+  - Fixed "First note muted" bug (Removed internal CC 123 race condition, again...).
+  - Fixed visualizer "Ghost Notes" by instantly flushing the buffer on transport loops and timeline clicks.
 
 slider1:0<0,1,1{Free (ms),Sync (Beats)}>Timing Mode
 slider2:6<0,11,1{8/1,4/1,2/1,1/1,1/2,1/4,1/8,1/16,1/32,1/4T,1/8T,1/16T}>Sync Rate
@@ -40,6 +38,7 @@ slider20:1<0,1,1>-A#
 slider21:1<0,1,1>-B
 
 @init
+ext_noinit = 1; 
 NOTE_ON = 0x90;
 NOTE_OFF = 0x80;
 gfx_clear = 30 + (30 * 256) + (34 * 65536); 
@@ -64,8 +63,22 @@ last_chord_mode = -1;
 sys_active_count = 0; 
 last_scale_preset = -1;
 gui_click_handled = 0;
+
+// Integer Grid Engine variables
 last_beat = -999.0;
-needs_clear = 1;
+last_grid_step = -999;
+
+function clear_active_notes(offset) local(i) (
+    i = 0;
+    while(i < MAX_ACTIVE_NOTES) (
+        active_notes[i*3 + 2] > 0 ? (
+            midisend(offset, NOTE_OFF, active_notes[i*3], 0);
+            active_notes[i*3 + 2] = 0;
+        );
+        i += 1;
+    );
+    sys_active_count = 0;
+);
 
 function apply_preset(preset) (
     preset == 1 ? ( slider10=1; slider11=1; slider12=1; slider13=1; slider14=1; slider15=1; slider16=1; slider17=1; slider18=1; slider19=1; slider20=1; slider21=1; ) : 
@@ -100,66 +113,70 @@ function build_quantizer_pool() local(n, note_class, is_active) (
     );
 );
 
-function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_notes, avail_count, n, cand, is_playing_now, j, picks, k, rand_idx, final_note, chord_vel, i, inserted) (
+function generate_note(offset_samples, calc_len, proj_time) local(base_vel, num_notes, picks, k, target_idx, is_dup, c, final_note, chord_vel, i, inserted, j, attempts) (
     valid_count > 0 ? (
         base_vel = 60 + (rand(47)|0); 
         num_notes = slider9 == 1 ? slider22 : 1;
         
-        // Exclude currently playing pitches to prevent overlapping NOTE_ONs
-        avail_count = 0;
-        n = 0;
-        while(n < valid_count) (
-            cand = valid_notes[n] + slider6;
-            cand >= 0 && cand <= 127 ? (
-                is_playing_now = 0;
-                j = 0;
-                while(j < MAX_ACTIVE_NOTES && !is_playing_now) (
-                    active_notes[j*3 + 2] > 0 && active_notes[j*3] == cand ? is_playing_now = 1;
-                    j += 1;
-                );
-                
-                !is_playing_now ? (
-                    TEMP_CHORD_BUF[avail_count] = cand;
-                    avail_count += 1;
-                );
-            );
-            n += 1;
-        );
-        
         picks = num_notes;
-        picks > avail_count ? picks = avail_count;
+        picks > valid_count ? picks = valid_count;
         
         k = 0;
         while(k < picks) (
-            rand_idx = rand(avail_count)|0;
-            final_note = TEMP_CHORD_BUF[rand_idx];
-            
-            avail_count -= 1;
-            TEMP_CHORD_BUF[rand_idx] = TEMP_CHORD_BUF[avail_count];
-            
-            chord_vel = base_vel + (rand(10)|0) - 5;
-            chord_vel > 127 ? chord_vel = 127; chord_vel < 1 ? chord_vel = 1;
-            
-            midisend(offset_samples, NOTE_ON, final_note, chord_vel);
-            
-            i = 0; inserted = 0;
-            while(i < MAX_ACTIVE_NOTES && !inserted) (
-                active_notes[i*3 + 2] <= 0 ? (
-                    active_notes[i*3] = final_note;
-                    active_notes[i*3 + 1] = chord_vel;
-                    active_notes[i*3 + 2] = calc_len;
-                    inserted = 1;
-                    sys_active_count += 1;
-                    
-                    VIS_BUF[vis_head*4 + 0] = final_note;
-                    VIS_BUF[vis_head*4 + 1] = proj_time;
-                    VIS_BUF[vis_head*4 + 2] = calc_len / srate; 
-                    VIS_BUF[vis_head*4 + 3] = chord_vel;
-                    
-                    vis_head = (vis_head + 1) % MAX_VIS;
-                    vis_count < MAX_VIS ? vis_count += 1;
+            // Robust Rejection Sampling with infinite-loop failsafe
+            is_dup = 1;
+            attempts = 0;
+            while(is_dup && attempts < 100) (
+                target_idx = rand(valid_count)|0;
+                is_dup = 0;
+                c = 0;
+                while(c < k) (
+                    TEMP_CHORD_BUF[c] == target_idx ? is_dup = 1;
+                    c += 1;
                 );
-                i += 1;
+                attempts += 1;
+            );
+            TEMP_CHORD_BUF[k] = target_idx;
+            
+            final_note = valid_notes[target_idx] + slider6; 
+            
+            final_note >= 0 && final_note <= 127 ? (
+                // SURGICAL KILL: Ensure this specific pitch is absolutely dead before sending a new NOTE_ON
+                j = 0;
+                while(j < MAX_ACTIVE_NOTES) (
+                    active_notes[j*3 + 2] > 0 && active_notes[j*3] == final_note ? (
+                        midisend(offset_samples, NOTE_OFF, final_note, 0);
+                        active_notes[j*3 + 2] = 0; 
+                        sys_active_count -= 1;
+                    );
+                    j += 1;
+                );
+
+                chord_vel = base_vel + (rand(10)|0) - 5;
+                chord_vel > 127 ? chord_vel = 127; chord_vel < 1 ? chord_vel = 1;
+                
+                midisend(offset_samples, NOTE_ON, final_note, chord_vel);
+                
+                i = 0; inserted = 0;
+                while(i < MAX_ACTIVE_NOTES && !inserted) (
+                    active_notes[i*3 + 2] <= 0 ? (
+                        active_notes[i*3] = final_note;
+                        active_notes[i*3 + 1] = chord_vel;
+                        active_notes[i*3 + 2] = calc_len;
+                        inserted = 1;
+                        sys_active_count += 1;
+                        
+                        // Push cleanly to visualizer
+                        VIS_BUF[vis_head*4 + 0] = final_note;
+                        VIS_BUF[vis_head*4 + 1] = proj_time;
+                        VIS_BUF[vis_head*4 + 2] = calc_len / srate; 
+                        VIS_BUF[vis_head*4 + 3] = chord_vel;
+                        
+                        vis_head = (vis_head + 1) % MAX_VIS;
+                        vis_count < MAX_VIS ? vis_count += 1;
+                    );
+                    i += 1;
+                );
             );
             k += 1;
         );
@@ -180,24 +197,6 @@ slider9 != last_chord_mode ? (
 build_quantizer_pool();
 
 @block
-// FIX: MIDI Panic Blast on Un-Bypass to prevent forever hanging notes
-needs_clear ? (
-    c = 0;
-    while(c < 16) (
-        midisend(0, 0xB0 + c, 123, 0); // All Notes Off
-        midisend(0, 0xB0 + c, 120, 0); // All Sound Off
-        c += 1;
-    );
-    
-    // Wipe arrays cleanly
-    i = 0;
-    while(i < MAX_ACTIVE_NOTES) ( active_notes[i*3 + 2] = 0; i += 1; );
-    sys_active_count = 0;
-    vis_count = 0;
-    vis_head = 0;
-    needs_clear = 0;
-);
-
 while(midirecv(offset, msg1, msg2, msg3)) ( midisend(offset, msg1, msg2, msg3); );
 
 tempo > 0 ? current_bpm = tempo : current_bpm = 120;
@@ -217,17 +216,19 @@ slider1 == 0 ? (
 is_playing = play_state & 1;
 is_playing != last_is_playing ? (
     !is_playing ? (
-        i = 0;
-        while(i < MAX_ACTIVE_NOTES) (
-            active_notes[i*3 + 2] > 0 ? (
-                midisend(0, NOTE_OFF, active_notes[i*3], 0);
-                active_notes[i*3 + 2] = 0;
+        clear_active_notes(0);
+        
+        // STOPPED: Instantly Truncate Visualizer Notes so they don't overhang the playhead
+        v = 0;
+        while(v < MAX_VIS) (
+            VIS_BUF[v*4 + 1] + VIS_BUF[v*4 + 2] > last_stop_time ? (
+                VIS_BUF[v*4 + 2] = max(0, last_stop_time - VIS_BUF[v*4 + 1]);
             );
-            i += 1;
+            v += 1;
         );
-        sys_active_count = 0;
     ) : (
-        last_beat = -999.0; // Force immediate exact grid trigger
+        // Reset Logic for clean start
+        last_beat = -999.0;
         phase = samples_per_cycle; 
     );
     last_is_playing = is_playing;
@@ -238,6 +239,7 @@ is_playing > 0 ? (
     while(s < samplesblock) (
         proj_time = play_position + (s / srate);
         
+        // Cleanly decrement currently playing note gates
         i = 0; checked = 0; curr_sys = sys_active_count; 
         while(i < MAX_ACTIVE_NOTES && checked < curr_sys) (
             active_notes[i*3 + 2] > 0 ? (
@@ -254,15 +256,30 @@ is_playing > 0 ? (
         
         trigger = 0;
         slider1 == 1 ? (
-            // Native DAW Beat Sync logic
             current_beat = beat_position + (s / srate) * (current_bpm / 60.0);
-            curr_beat_div = floor(current_beat / beat_step);
-            last_beat_div = floor(last_beat / beat_step);
-            curr_beat_div > last_beat_div ? trigger = 1;
+            
+            // JITTER-PROOF INTEGER GRID TRACKING
+            adj_beat = current_beat + 0.0001; 
+            
+            // Detect Jumps / Loops
+            abs(current_beat - last_beat) > 0.1 ? (
+                // Force the next integer evaluation to trigger instantly
+                last_grid_step = floor(adj_beat / beat_step) - 1; 
+                clear_active_notes(s);
+                vis_count = 0; vis_head = 0; 
+            );
+            
+            curr_grid_step = floor(adj_beat / beat_step);
+            
+            curr_grid_step > last_grid_step ? (
+                trigger = 1;
+                last_grid_step = curr_grid_step;
+            );
+            
             last_beat = current_beat;
             calc_len = (beat_step * (60.0 / current_bpm) * srate * (slider7 / 100.0))|0;
         ) : (
-            // Free phase logic
+            // FREE RATE 
             phase += 1;
             phase >= samples_per_cycle ? (
                 phase -= samples_per_cycle; 
@@ -273,7 +290,7 @@ is_playing > 0 ? (
 
         trigger ? (
             cycle_len = slider1 == 1 ? (beat_step * (60.0 / current_bpm) * srate)|0 : samples_per_cycle|0;
-            calc_len >= cycle_len ? calc_len = cycle_len - 1; // 1-sample gap prevents synth overlap confusion
+            calc_len >= cycle_len ? calc_len = cycle_len - 1; 
             calc_len < 1 ? calc_len = 1;
             generate_note(s, calc_len, proj_time);
         );
@@ -285,14 +302,14 @@ is_playing > 0 ? (
 
 
 @gfx 600 480
-// FIX: Thread-safe snapshotting prevents 100% of UI flickering
+// Thread-safe UI snapshotting
 safe_vis_head = vis_head;
 safe_vis_count = vis_count;
 
 gfx_setfont(1, "Arial", 16, 'b');
 gfx_setfont(2, "Arial", 12);
 gfx_setfont(3, "Arial", 24, 'b');
-gfx_setfont(4, "Arial", 11, 'b'); // Dedicated fixed font for Note Labels
+gfx_setfont(4, "Arial", 11, 'b'); 
 
 gfx_set(0.2, 0.6, 1.0, 1.0);
 gfx_x = 20; gfx_y = 15;
@@ -459,11 +476,9 @@ p_max > 127 ? p_max = 127;
 p_range = p_max - p_min + 1;
 row_h = th / max(1, p_range);
 
-// Draw Background
 gfx_set(0.14, 0.14, 0.14, 1.0);
 gfx_rect(tx, ty, tw, th);
 
-// Vertical grid lines (Locked accurately to Beats or Milliseconds)
 gfx_set(0.2, 0.2, 0.2, 1.0);
 grid_step_s = slider1 == 1 ? (beat_step * 60.0 / current_bpm) : (slider3 / 1000.0);
 grid_step_s < 0.05 ? grid_step_s = 0.05; 
@@ -476,7 +491,6 @@ while(g_s <= t_end) (
     g_s += grid_step_s;
 );
 
-// Horizontal Piano Roll lines (Fixes visual vertical alignment)
 gfx_set(0.2, 0.2, 0.2, 0.5);
 r = 0;
 while(r <= p_range) (
@@ -509,7 +523,7 @@ while(i < safe_vis_count) (
     nh = row_h;
     
     draw_w > 0 && pitch >= p_min && pitch <= p_max ? (
-        is_active = (t_playhead >= start_s && t_playhead <= start_s + len_s);
+        is_active = (play_state & 1) && (t_playhead >= start_s && t_playhead <= start_s + len_s);
         
         is_active ? gfx_set(0.3, 0.7, 1.0, 1.0) : gfx_set(0.15, 0.4, 0.6, 0.8);
         vel_alpha = 0.5 + (vel / 127.0) * 0.5;
@@ -520,7 +534,6 @@ while(i < safe_vis_count) (
         gfx_set(0.05, 0.1, 0.2, 1.0);
         gfx_rect(draw_x, ny, draw_w, nh, 0);
         
-        // Generate and safely draw Note Label
         oct = (pitch / 12)|0 - 1;
         n_idx = pitch % 12;
         n_idx == 0 ? n_str = "C" : n_idx == 1 ? n_str = "C#" : n_idx == 2 ? n_str = "D" :
@@ -529,10 +542,9 @@ while(i < safe_vis_count) (
         n_idx == 9 ? n_str = "A" : n_idx == 10 ? n_str = "A#" : n_str = "B";
         sprintf(#note_label, "%s%d", n_str, oct);
         
-        gfx_setfont(4); // Use fixed label font
+        gfx_setfont(4); 
         gfx_measurestr(#note_label, str_w, str_h);
         
-        // Generously allow text to draw even if the block is small
         nh >= 10 && draw_w >= 8 ? (
             gfx_x = draw_x + 2;
             gfx_y = ny + (nh - str_h)/2;
