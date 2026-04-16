@@ -2,6 +2,7 @@ desc: Procedural Analog Tape Sim v4
 author: ZaurS2001
 version: 1.0.0
 about: 
+    # JSTapeSim3
     - Realtime port of the Python offline tape processor
 changelog:
     - Drift decoupled from Anomalies, continuous random wander added
