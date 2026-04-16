@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="ZSReaScripts" commit="012807ce89827406a76205c849e4bb473a224de8">
+<index version="1" name="ZSReaScripts" commit="e5f44e5b6d68049684a15d774c5ce01a4a705817">
   <category name="Audio Effects/ReaPyTapeSim3">
     <reapack name="tape_sim3_UI.lua" type="script" desc="ReaPyTapeSim3 UI">
       <metadata>
@@ -37,6 +37,23 @@
         <source file="tape_sim3.py">https://github.com/ZaurS2001/ZSReaScripts/raw/5e66d4216e6d3fc032cdb1add6a4e45b1572a047/Audio%20Effects/ReaPyTapeSim3/tape_sim3.py</source>
         <source file="requirements.txt">https://github.com/ZaurS2001/ZSReaScripts/raw/5e66d4216e6d3fc032cdb1add6a4e45b1572a047/Audio%20Effects/ReaPyTapeSim3/requirements.txt</source>
         <source file="README.md">https://github.com/ZaurS2001/ZSReaScripts/raw/5e66d4216e6d3fc032cdb1add6a4e45b1572a047/Audio%20Effects/ReaPyTapeSim3/README.md</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Effects">
+    <reapack name="js_tape_sim3.jsfx" type="effect" desc="Procedural Analog Tape Sim v4">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Realtime port of the Python offline tape processor\sa180\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0.0" author="ZaurS2001" time="2026-04-16T13:16:16Z">
+        <changelog><![CDATA[- Drift decoupled from Anomalies, continuous random wander added]]></changelog>
+        <source>https://github.com/ZaurS2001/ZSReaScripts/raw/e5f44e5b6d68049684a15d774c5ce01a4a705817/Effects/js_tape_sim3.jsfx</source>
       </version>
     </reapack>
   </category>
