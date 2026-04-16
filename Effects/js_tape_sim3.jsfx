@@ -1,0 +1,329 @@
+desc: Procedural Analog Tape Sim v4
+author: ZaurS2001
+version: 1.0.0
+about: 
+    - Realtime port of the Python offline tape processor
+changelog:
+    - Drift decoupled from Anomalies, continuous random wander added
+
+slider1:0<0,1,1{Type A (Standard),Type B (VHS)}>Tape Type
+slider2:20<0,100,0.1>Saturation Amount (%)
+slider3:1<0,1,1{Off,On}>Dropouts and Anomalies
+slider4:20<0,100,0.1>Anomaly Rate (%)
+slider5:0<0,100,0.1>Dropout Filter/Vol Dip (%)
+slider6:30<0,100,0.1>Tape Chew Doubling (%)
+slider7:0<0,100,0.1>Smear (%)
+slider8:15<0,100,0.1>VHS Hum Volume (%)
+
+slider10:1.0<0.1,10.0,0.01>Wow Rate (Hz)
+slider11:20<0,100,0.1>Wow Depth (%)
+slider12:10<0,100,0.1>Wow Variability (%)
+
+slider14:15.0<1.0,50.0,0.1>Flutter Rate (Hz)
+slider15:20<0,100,0.1>Flutter Depth (%)
+slider16:10<0,100,0.1>Flutter Variability (%)
+
+slider20:4000<100,20000,10>Noise Cutoff (Hz)
+slider21:10<0,100,0.1>Noise Volume (%)
+
+@init
+pi = 3.1415926535897932384;
+twopi = 2.0 * pi;
+
+// Delay Buffer Allocation
+buf_L = 0;          // Occupies 0 to 65535
+buf_R = 65536;      // Occupies 65536 to 131071
+buf_mask = 65535;
+write_pos = 0;
+
+// Filter Memory Map
+mem_lp_L = 200000; mem_lp_R = 200010;
+mem_hp_L = 200020; mem_hp_R = 200030;
+mem_muff_L = 200040; mem_muff_R = 200050;
+mem_vhs_nL = 200060; mem_vhs_nR = 200070;
+
+mem_wow_lfo  = 200130;
+mem_flut_lfo = 200140;
+mem_az_lfo   = 200150;
+mem_hiss_lfo = 200160;
+mem_drift_lfo = 200170; // Dedicated independent drift LFO
+
+// State Machine Timers for Dropouts (0: State, 1: Timer, 2: Target Depth)
+t_drop = 200200; 
+t_chew = 200210;
+t_trk  = 200220;
+
+// Slider smoothing targets
+sm_w_depth = 0;
+sm_f_depth = 0;
+sm_drift = 0;
+
+function ftanh(x) ( 2.0 / (1.0 + exp(-2.0 * x)) - 1.0; );
+
+function set_biquad_lp(freq, q, mem_idx) local(w0, alpha, cosw0) (
+    freq = max(min(freq, srate * 0.45), 10);
+    w0 = twopi * freq / srate;
+    cosw0 = cos(w0);
+    alpha = sin(w0) / (2.0 * q);
+    mem_idx[9] = 1.0 + alpha; 
+    mem_idx[0] = ((1.0 - cosw0) / 2.0) / mem_idx[9];
+    mem_idx[1] = (1.0 - cosw0) / mem_idx[9];
+    mem_idx[2] = ((1.0 - cosw0) / 2.0) / mem_idx[9];
+    mem_idx[3] = (-2.0 * cosw0) / mem_idx[9];
+    mem_idx[4] = (1.0 - alpha) / mem_idx[9];
+);
+
+function set_biquad_hp(freq, q, mem_idx) local(w0, alpha, cosw0) (
+    freq = max(min(freq, srate * 0.45), 10);
+    w0 = twopi * freq / srate;
+    cosw0 = cos(w0);
+    alpha = sin(w0) / (2.0 * q);
+    mem_idx[9] = 1.0 + alpha;
+    mem_idx[0] = ((1.0 + cosw0) / 2.0) / mem_idx[9];
+    mem_idx[1] = -(1.0 + cosw0) / mem_idx[9];
+    mem_idx[2] = ((1.0 + cosw0) / 2.0) / mem_idx[9];
+    mem_idx[3] = (-2.0 * cosw0) / mem_idx[9];
+    mem_idx[4] = (1.0 - alpha) / mem_idx[9];
+);
+
+function process_biquad(x, mem_idx) local(y) (
+    y = mem_idx[0]*x + mem_idx[1]*mem_idx[5] + mem_idx[2]*mem_idx[6] 
+        - mem_idx[3]*mem_idx[7] - mem_idx[4]*mem_idx[8];
+    mem_idx[6] = mem_idx[5]; mem_idx[5] = x;
+    mem_idx[8] = mem_idx[7]; mem_idx[7] = y;
+    y;
+);
+
+// Strict State Machine Anomaly Generator
+function tick_anomaly(idx, rate_hz, base_width) (
+    idx[1] == 0.0 ? idx[1] = 0.5 + rand(1.5) / max(rate_hz, 0.01); 
+    
+    idx[1] -= 1.0 / srate;
+    idx[1] <= 0.0 ? (
+        idx[0] == 0 ? (
+            idx[0] = 1; 
+            idx[1] = base_width * (0.5 + rand(1.0)); 
+            idx[2] = 0.5 + rand(0.5); 
+        ) : (
+            idx[0] = 0; 
+            idx[1] = (0.2 + rand(1.6)) / max(rate_hz, 0.01); 
+            idx[2] = 0.0;
+        );
+    );
+    idx[0] * idx[2]; 
+);
+
+// 4-point Hermite interpolation 
+function read_delay_hermite(buf, d_smp) local(p, i0, i1, i2, i3, frac, y0, y1, y2, y3, c0, c1, c2, c3) (
+    d_smp = max(min(d_smp, 65530.0), 1.0);
+    
+    p = write_pos - d_smp;
+    p < 0.0 ? p += 65536.0;
+    
+    i1 = floor(p);
+    frac = p - i1;
+    
+    i1 = i1 & 65535;
+    i0 = (i1 - 1) & 65535;
+    i2 = (i1 + 1) & 65535;
+    i3 = (i1 + 2) & 65535;
+    
+    y0 = buf[i0]; y1 = buf[i1]; y2 = buf[i2]; y3 = buf[i3];
+    
+    c0 = y1;
+    c1 = 0.5 * (y2 - y0);
+    c2 = y0 - 2.5 * y1 + 2.0 * y2 - 0.5 * y3;
+    c3 = 0.5 * (y3 - y0) + 1.5 * (y1 - y2);
+    
+    c0 + frac * (c1 + frac * (c2 + frac * c3));
+);
+
+@slider
+is_vhs = slider1 == 1;
+S = max(min(slider2 / 100.0, 1.0), 0.0);
+drive = 1.0 + S * 5.0;
+
+lp_cutoff = max(18000.0 - S * 8000.0, 1000.0);
+hp_cutoff = 20.0 + S * 40.0;
+set_biquad_lp(lp_cutoff, 0.5, mem_lp_L);
+set_biquad_lp(lp_cutoff, 0.5, mem_lp_R);
+set_biquad_hp(hp_cutoff, 0.5, mem_hp_L);
+set_biquad_hp(hp_cutoff, 0.5, mem_hp_R);
+
+w_base = slider10;
+w_var_amt = slider12 / 100.0;
+t_w_depth = (slider11 / 100.0) * 0.005 * srate;
+
+f_base = slider14;
+f_var_amt = slider16 / 100.0;
+t_f_depth = (slider15 / 100.0) * 0.001 * srate;
+
+t_drift = (slider7 / 100.0) * 0.1 * srate;
+doub_amt = slider6 / 100.0;
+hum_vol = slider8 / 100.0;
+
+noise_w0 = twopi * slider20 / srate;
+noise_alpha = min(noise_w0 / (noise_w0 + 1.0), 1.0);
+noise_makeup = min(1.0 / sqrt(max(noise_alpha, 0.001)), 5.0);
+hiss_level = (slider21 / 100.0) * 0.05 * noise_makeup * (is_vhs ? 1.5 : 1.0);
+
+is_dropouts = slider3 == 1;
+prob = max(min(slider4 / 100.0, 1.0), 0.0);
+filt_vol_amt = slider5 / 100.0;
+
+muff_freq = max(300.0, 15000.0 - filt_vol_amt * 14700.0);
+set_biquad_lp(muff_freq, 0.5, mem_muff_L);
+set_biquad_lp(muff_freq, 0.5, mem_muff_R);
+
+set_biquad_lp(max(0.1, w_base * 0.5), 0.5, mem_wow_lfo);
+set_biquad_lp(max(0.5, f_base * 0.5), 0.5, mem_flut_lfo);
+set_biquad_lp(0.5, 0.5, mem_az_lfo);
+set_biquad_lp(2.0, 0.5, mem_hiss_lfo);
+
+// New dedicated ultra-slow continuous drift filter (0.2 Hz)
+set_biquad_lp(0.2, 0.5, mem_drift_lfo);
+
+is_vhs ? ( 
+    set_biquad_lp(6000, 0.5, mem_vhs_nL); 
+    set_biquad_lp(6000, 0.5, mem_vhs_nR); 
+);
+
+env_coeff = 25.0 / srate;
+
+@sample
+spl0 += 0.0000000001; spl1 += 0.0000000001;
+
+sm_coeff = 20.0 / srate;
+sm_w_depth += (t_w_depth - sm_w_depth) * sm_coeff;
+sm_f_depth += (t_f_depth - sm_f_depth) * sm_coeff;
+sm_drift += (t_drift - sm_drift) * sm_coeff;
+
+spl0 = ftanh(spl0 * drive);
+spl1 = ftanh(spl1 * drive);
+
+spl0 = process_biquad(spl0, mem_lp_L);
+spl1 = process_biquad(spl1, mem_lp_R);
+spl0 = process_biquad(spl0, mem_hp_L);
+spl1 = process_biquad(spl1, mem_hp_R);
+
+is_dropouts ? (
+    rate_hz = 0.05 * exp(prob * 3.688); 
+    d_pulse = tick_anomaly(t_drop, rate_hz, 0.15); 
+    c_pulse = tick_anomaly(t_chew, rate_hz * 0.7, 0.4); 
+    tk_pulse = is_vhs ? tick_anomaly(t_trk, rate_hz * 0.5, 0.6) : 0;
+) : (
+    d_pulse = 0; c_pulse = 0; tk_pulse = 0;
+);
+
+de_1 += (d_pulse - de_1) * env_coeff;
+de_2 += (de_1 - de_2) * env_coeff;
+drop_env += (de_2 - drop_env) * env_coeff;
+
+ce_1 += (c_pulse - ce_1) * env_coeff;
+ce_2 += (ce_1 - ce_2) * env_coeff;
+chew_env += (ce_2 - chew_env) * env_coeff;
+
+tk_1 += (tk_pulse - tk_1) * env_coeff;
+tk_2 += (tk_1 - tk_2) * env_coeff;
+trk_env += (tk_2 - trk_env) * env_coeff;
+
+// --- Pitch / Delay Modulation ---
+
+w_rnd = process_biquad(rand(2.0)-1.0, mem_wow_lfo) * 10.0;
+f_rnd = process_biquad(rand(2.0)-1.0, mem_flut_lfo) * 10.0;
+w_rnd = max(min(w_rnd, 2.0), -1.0);
+f_rnd = max(min(f_rnd, 2.0), -1.0);
+
+mod_w_depth = sm_w_depth * max(1.0 + (w_var_amt * w_rnd), 0.0);
+mod_f_depth = sm_f_depth * max(1.0 + (f_var_amt * f_rnd), 0.0);
+
+w_phase += w_base / srate; w_phase >= 1.0 ? w_phase -= 1.0;
+f_phase += f_base / srate; f_phase >= 1.0 ? f_phase -= 1.0;
+
+w_lfo = sin(twopi * w_phase) * mod_w_depth;
+f_lfo = sin(twopi * f_phase) * mod_f_depth;
+
+// Continuous Random Drift (Now independent of Tape Chew)
+drift_rnd = process_biquad(rand(2.0)-1.0, mem_drift_lfo) * 10.0;
+drift_rnd = max(min(drift_rnd, 2.0), -1.0);
+drift_lfo = drift_rnd * sm_drift;
+
+az_rnd = process_biquad(rand(2.0)-1.0, mem_az_lfo) * 10.0;
+az_lfo = az_rnd * (sm_drift * 0.01);
+
+// Add a slight pitch warp during a tape chew proportional to the chew amount
+chew_pitch_warp = chew_env * (doub_amt * 0.01 * srate);
+
+delay_base = w_lfo + f_lfo + drift_lfo + chew_pitch_warp + (is_vhs ? trk_env * (S * 0.02 * srate) : 0);
+
+// Safe offset dynamically accounts for max possible swings from ALL sources
+max_w_swing = sm_w_depth * (1.0 + w_var_amt * 2.0);
+max_f_swing = sm_f_depth * (1.0 + f_var_amt * 2.0);
+max_drift_swing = sm_drift * 2.0;
+max_chew_swing = (doub_amt * 0.01 * srate);
+max_trk_swing = (S * 0.02 * srate);
+
+static_offset = max_w_swing + max_f_swing + max_drift_swing + max_chew_swing + max_trk_swing + (0.005 * srate); 
+
+delay_L = delay_base + static_offset;
+delay_R = delay_base + az_lfo + static_offset;
+
+buf_L[write_pos] = spl0;
+buf_R[write_pos] = spl1;
+
+warped_L = read_delay_hermite(buf_L, delay_L);
+warped_R = read_delay_hermite(buf_R, delay_R);
+
+is_dropouts && doub_amt > 0 ? (
+    blend = min(chew_env + trk_env, 1.0) * doub_amt;
+    warped_L = warped_L * (1.0 - blend) + read_delay_hermite(buf_L, delay_L * 0.8 + (0.015 * srate)) * blend;
+    warped_R = warped_R * (1.0 - blend) + read_delay_hermite(buf_R, delay_R * 0.8 + (0.015 * srate)) * blend;
+);
+
+spl0 = warped_L; spl1 = warped_R;
+
+// --- Noise & Tone Shaping ---
+
+raw_nL = rand(2.0) - 1.0; 
+raw_nR = rand(2.0) - 1.0;
+
+noise_lp_L += (raw_nL - noise_lp_L) * noise_alpha;
+noise_lp_R += (raw_nR - noise_lp_R) * noise_alpha;
+
+nL = noise_lp_L; 
+nR = noise_lp_R;
+
+is_vhs ? (
+    nL = process_biquad(nL, mem_vhs_nL); nR = process_biquad(nR, mem_vhs_nR);
+    hmod = process_biquad(rand(2.0)-1.0, mem_hiss_lfo) * 10.0;
+    nL *= (1.0 + hmod * 0.4); nR *= (1.0 + hmod * 0.4);
+);
+spl0 += nL * hiss_level; spl1 += nR * hiss_level;
+
+is_vhs ? (
+    h_ph += 60.0 / srate; h_ph >= 1.0 ? h_ph -= 1.0;
+    hum = sin(twopi * h_ph) + 0.5 * sin(twopi * 2.0 * h_ph) + 0.25 * sin(twopi * 3.0 * h_ph);
+    
+    raw_buzz = exp(-15.0 * h_ph);
+    sm_buzz += (raw_buzz - sm_buzz) * (2000.0 / srate); 
+    
+    h_sig = (hum * 0.5 + sm_buzz * 0.5) * 0.015 * hum_vol;
+    spl0 += h_sig; spl1 += h_sig;
+);
+
+is_dropouts && filt_vol_amt > 0 ? (
+    m_L = process_biquad(spl0, mem_muff_L); 
+    m_R = process_biquad(spl1, mem_muff_R);
+    
+    eff_drop = min(drop_env * 1.5, 1.0);
+    
+    spl0 = spl0 * (1.0 - eff_drop * (filt_vol_amt * 0.95));
+    spl1 = spl1 * (1.0 - eff_drop * (filt_vol_amt * 0.95));
+    spl0 = spl0 * (1.0 - eff_drop) + m_L * eff_drop;
+    spl1 = spl1 * (1.0 - eff_drop) + m_R * eff_drop;
+);
+
+spl0 = ftanh(spl0) - 0.0000000001; 
+spl1 = ftanh(spl1) - 0.0000000001;
+
+write_pos = (write_pos + 1) & buf_mask;
